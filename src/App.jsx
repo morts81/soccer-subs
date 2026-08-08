@@ -181,7 +181,8 @@ export default function App() {
         onStart={(names, name) => {
           store.saveTeam({ name, names });
           setTeamName(name);
-          setGame(E.createGame(names));
+          const subsPerRotation = E.defaultSubsPerRotation(names.length, E.DEFAULT_SETTINGS);
+          setGame(E.createGame(names, { subsPerRotation }));
         }}
       />
     );
@@ -196,7 +197,11 @@ export default function App() {
         onDone={() => setScreen('game')}
         onNewGame={() => {
           store.clearGame();
-          setGame(E.createGame(game.players.map((p) => p.name), game.settings));
+          const names = game.players.map((p) => p.name);
+          const settings = game.settings.subsPerRotationAuto
+            ? { ...game.settings, subsPerRotation: E.defaultSubsPerRotation(names.length, game.settings) }
+            : game.settings;
+          setGame(E.createGame(names, settings));
           setScreen('game');
         }}
       />

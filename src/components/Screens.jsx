@@ -122,6 +122,15 @@ function Toggle({ label, on, onChange }) {
 export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }) {
   const s = state.settings;
   const set = (patch) => onChange({ ...s, ...patch });
+  // fieldPlayers/keeperEnabled change the bench size, so re-derive
+  // subsPerRotation from it — but only while the user hasn't taken the wheel.
+  const setSquadShape = (patch) => {
+    const next = { ...s, ...patch };
+    if (s.subsPerRotationAuto) {
+      next.subsPerRotation = E.defaultSubsPerRotation(state.players.length, next);
+    }
+    onChange(next);
+  };
   const advice = E.fairnessAdvice(state);
 
   return (
@@ -134,20 +143,20 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           value={s.fieldPlayers}
           min={3}
           max={10}
-          onChange={(v) => set({ fieldPlayers: v })}
+          onChange={(v) => setSquadShape({ fieldPlayers: v })}
           format={(v) => (s.keeperEnabled ? `${v} + keeper` : `${v}`)}
         />
         <Toggle
           label="Play with a keeper"
           on={s.keeperEnabled}
-          onChange={(v) => set({ keeperEnabled: v })}
+          onChange={(v) => setSquadShape({ keeperEnabled: v })}
         />
         <Slider
           label="Players swapped each time"
           value={s.subsPerRotation}
           min={1}
           max={Math.max(1, s.fieldPlayers)}
-          onChange={(v) => set({ subsPerRotation: v })}
+          onChange={(v) => set({ subsPerRotation: v, subsPerRotationAuto: false })}
         />
         <Slider
           label="Minutes between subs"

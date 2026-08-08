@@ -64,6 +64,7 @@ A player who comes off early always has zero rest at the moment they hit the ben
 - **Cancelling the rotation postpones it and restarts the interval.** It doesn't skip. A skip that silently costs a kid five minutes is hard to notice and harder to explain.
 - **Undo restores a full snapshot** rather than inverting the last operation. Simpler and always correct, including after several rapid swaps.
 - **A returning injured player goes to the bench, never straight onto the field.**
+- **"Players swapped each time" defaults to the bench size**, not a fixed number — 6 + keeper on the pitch out of a 9-player squad defaults to swapping 2, the whole bench, each rotation. Touch the slider yourself and the default stops following squad or field-size changes; `subsPerRotationAuto` tracks whether you have.
 
 ## Storage
 

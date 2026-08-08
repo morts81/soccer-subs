@@ -27,6 +27,28 @@ describe('derived roles (§4.3)', () => {
   });
 });
 
+describe('defaultSubsPerRotation', () => {
+  it('matches the worked example: 6 + keeper on pitch, 9 on the list, 2 subs', () => {
+    const settings = { ...E.DEFAULT_SETTINGS, fieldPlayers: 6, keeperEnabled: true };
+    expect(E.defaultSubsPerRotation(9, settings)).toBe(2);
+  });
+
+  it('drops the keeper slot when there is no keeper', () => {
+    const settings = { ...E.DEFAULT_SETTINGS, fieldPlayers: 6, keeperEnabled: false };
+    expect(E.defaultSubsPerRotation(9, settings)).toBe(3);
+  });
+
+  it('clamps to 1 when the squad is exactly the starting lineup', () => {
+    const settings = { ...E.DEFAULT_SETTINGS, fieldPlayers: 6, keeperEnabled: true };
+    expect(E.defaultSubsPerRotation(7, settings)).toBe(1);
+  });
+
+  it('clamps to fieldPlayers when the bench outnumbers the field', () => {
+    const settings = { ...E.DEFAULT_SETTINGS, fieldPlayers: 4, keeperEnabled: true };
+    expect(E.defaultSubsPerRotation(15, settings)).toBe(4);
+  });
+});
+
 describe('scheduled rotation (§A5)', () => {
   it('produces the worked example from the spec', () => {
     const after = E.applyRotation(game, 300_000);

@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS = {
   fieldPlayers: 6,
   keeperEnabled: true,
   subsPerRotation: 3,
+  subsPerRotationAuto: true, // recompute subsPerRotation from squad size until overridden
   rotationSeconds: 300,
   totalGameMinutes: 40,
   periods: 2,
@@ -54,6 +55,19 @@ export function createGame(names = [], settings = {}) {
     events: [],
     undoStack: [],
   };
+}
+
+/**
+ * The bench size a fresh squad implies: everyone not on the field or in
+ * goal. That's the natural number of subs to rotate at once — swapping fewer
+ * leaves players sitting out who didn't need to, swapping more is capped by
+ * `benchEligible` anyway. Clamped to at least 1 (there's always someone to
+ * bring on) and at most fieldPlayers (the slider's own ceiling).
+ */
+export function defaultSubsPerRotation(playerCount, settings) {
+  const keeperSlots = settings.keeperEnabled ? 1 : 0;
+  const bench = playerCount - keeperSlots - settings.fieldPlayers;
+  return Math.min(Math.max(1, bench), Math.max(1, settings.fieldPlayers));
 }
 
 export const getPlayer = (state, id) => state.players.find((p) => p.id === id);
