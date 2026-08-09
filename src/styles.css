@@ -643,13 +643,29 @@ input[type='text'] {
 
 .playerline__name {
   flex: 1;
+  text-align: left;
+  padding: 0;
 }
 
-.playerline button {
-  color: var(--off);
+.playerline__edit {
+  flex: 1;
+  min-height: 38px;
+}
+
+.playerline__edit-btn,
+.playerline__remove {
   font-size: 14px;
   font-weight: 600;
   padding: 8px;
+  flex: none;
+}
+
+.playerline__edit-btn {
+  color: var(--ink-soft);
+}
+
+.playerline__remove {
+  color: var(--off);
 }
 
 .qr {

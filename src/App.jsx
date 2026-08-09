@@ -5,6 +5,8 @@ import * as store from './engine/persistence.js';
 import { useGameClock, useWakeLock } from './hooks/useGameClock.js';
 import PlayerRow from './components/PlayerRow.jsx';
 import {
+  ConfirmDialog,
+  GoalScorerSheet,
   KeeperSheet,
   PlayerSheet,
   ReasonSheet,
@@ -32,6 +34,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [showScore, setShowScore] = useState(false);
   const [redWarning, setRedWarning] = useState(null);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const [lastActionLabel, setLastActionLabel] = useState(null);
 
   const toastTimer = useRef(null);
 
@@ -62,7 +66,7 @@ export default function App() {
 
   /* ---- clock ----------------------------------------------------------- */
 
-  const modalOpen = Boolean(game?.pendingRotation || sheet || swap);
+  const modalOpen = Boolean(game?.pendingRotation || sheet || swap || confirmUndo);
   const clockRunning =
     Boolean(game?.clock.running) &&
     !(game?.settings.pauseGameClockOnDialog && modalOpen);
@@ -78,7 +82,7 @@ export default function App() {
   /* ---- rotation firing (§5.9) ------------------------------------------ */
 
   const rotationDue = game ? E.rotationDue(game, nowMs) : false;
-  const blocked = Boolean(swap || sheet || showScore);
+  const blocked = Boolean(swap || sheet || showScore || confirmUndo);
 
   useEffect(() => {
     if (!game || !game.clock.running) return;
@@ -106,10 +110,10 @@ export default function App() {
       : roles.onFieldIds.filter((id) => id !== roles.keeperId || game.settings.keeperEnabled);
   }, [game, swap, roles]);
 
-  const leastTimeId = useMemo(() => {
-    if (!targets.length) return null;
-    return [...targets].sort((a, b) => E.playedMs(game, a, nowMs) - E.playedMs(game, b, nowMs))[0];
-  }, [targets, game, nowMs]);
+  const leastTimeId = useMemo(
+    () => (game ? E.leastTimeId(game, targets, nowMs) : null),
+    [targets, game, nowMs]
+  );
 
   const beginSwap = (id) => {
     const role = E.roleOf(game, id, nowMs);
@@ -138,9 +142,10 @@ export default function App() {
     const next = E.earlySwap(game, offId, onId, nowMs);
     commit(next, nowMs);
     setSwap(null);
+    setLastActionLabel(`${offName} off, ${onName} on`);
     navigator.vibrate?.(18);
 
-    const actions = [['Undo', () => setGame((g) => E.undo(g))]];
+    const actions = [['Undo', () => setGame((g) => E.undo(g, nowMs))]];
     if (E.inAbsorbWindow(next, nowMs)) {
       actions.push([
         'Do the full sub now',
@@ -153,18 +158,24 @@ export default function App() {
   const handleSheetAction = (action, id) => {
     setSheet(null);
     if (action === 'return') {
+      const name = E.getPlayer(game, id).name;
       commit(E.returnToRotation(game, id, nowMs), nowMs);
-      flash(`${E.getPlayer(game, id).name} is back in the rotation`);
+      setLastActionLabel(`${name} back in the rotation`);
+      flash(`${name} is back in the rotation`);
     } else if (action === 'keeper') {
+      const name = E.getPlayer(game, id).name;
       commit(E.swapKeeperWithField(game, id, nowMs), nowMs);
-      flash(`${E.getPlayer(game, id).name} is in goal`);
+      setLastActionLabel(`${name} in goal`);
+      flash(`${name} is in goal`);
     } else if (action === 'moveTo') {
+      const name = E.getPlayer(game, id).name;
       const from = game.order.indexOf(id);
       const onField = ['field', 'nextOff'].includes(E.roleOf(game, id, nowMs));
       const to = onField ? (game.settings.keeperEnabled ? 1 : 0) : roles.bench.length
         ? game.order.indexOf(roles.bench[0])
         : from;
       commit(E.reorder(game, from, to, nowMs), nowMs);
+      setLastActionLabel(`${name} moved in the queue`);
     } else if (action === 'unavailable') {
       setSheet({ kind: 'reason', id });
     }
@@ -213,7 +224,10 @@ export default function App() {
       <PlayersScreen
         state={game}
         nowMs={nowMs}
-        onAdd={(name, credit) => commit(E.addPlayerMidGame(game, name, credit, nowMs), nowMs)}
+        onAdd={(name, credit) => {
+          commit(E.addPlayerMidGame(game, name, credit, nowMs), nowMs);
+          setLastActionLabel(`${name} added to the squad`);
+        }}
         onDone={() => setScreen('game')}
       />
     );
@@ -249,7 +263,7 @@ export default function App() {
           ⇪
         </button>
         <button
-          onClick={() => setGame(E.undo(game))}
+          onClick={() => setConfirmUndo(true)}
           disabled={!E.canUndo(game)}
           style={{ opacity: E.canUndo(game) ? 1 : 0.35 }}
         >
@@ -331,8 +345,16 @@ export default function App() {
       {game.pendingRotation && !blocked && (
         <RotationDialog
           state={game}
-          onConfirm={() => commit(E.applyRotation(game, nowMs), nowMs)}
-          onPostpone={() => commit(E.postponeRotation(game, nowMs), nowMs)}
+          onConfirm={() => {
+            const { off, on } = game.pendingRotation;
+            setLastActionLabel(
+              `${off.map((id) => E.getPlayer(game, id).name).join(', ')} off, ${on
+                .map((id) => E.getPlayer(game, id).name)
+                .join(', ')} on`
+            );
+            commit(E.applyRotation(game, nowMs), nowMs);
+          }}
+          onPostpone={() => commit(E.postponeRotation(game), nowMs)}
         />
       )}
 
@@ -354,21 +376,20 @@ export default function App() {
           onChoose={(source, id) => {
             setSheet(null);
             if (source === 'bench') {
+              const label = `${E.getPlayer(game, id).name} in goal`;
               commit(E.earlySwap(game, roles.keeperId, id, nowMs), nowMs);
+              setLastActionLabel(label);
               flash(`${E.getPlayer(game, id).name} is in goal`, [
-                ['Undo', () => setGame((g) => E.undo(g))],
+                ['Undo', () => setGame((g) => E.undo(g, nowMs))],
               ]);
             } else {
               const replacement = roles.bench[0] ?? null;
+              const label = replacement
+                ? `${E.getPlayer(game, id).name} in goal, ${E.getPlayer(game, replacement).name} on`
+                : `${E.getPlayer(game, id).name} in goal`;
               commit(E.keeperHandover(game, roles.keeperId, id, replacement, nowMs), nowMs);
-              flash(
-                replacement
-                  ? `${E.getPlayer(game, id).name} in goal, ${
-                      E.getPlayer(game, replacement).name
-                    } on`
-                  : `${E.getPlayer(game, id).name} is in goal`,
-                [['Undo', () => setGame((g) => E.undo(g))]]
-              );
+              setLastActionLabel(label);
+              flash(label, [['Undo', () => setGame((g) => E.undo(g, nowMs))]]);
             }
           }}
         />
@@ -381,15 +402,13 @@ export default function App() {
           onChoose={(reason) => {
             const id = sheet.id;
             setSheet(null);
+            const name = E.getPlayer(game, id).name;
             const onField = roles.onFieldIds.includes(id);
             const replacement = onField ? roles.bench[0] ?? null : null;
+            const label = onField && !replacement ? `${name} off — playing short` : `${name} is out`;
             commit(E.markUnavailable(game, id, reason, nowMs, replacement), nowMs);
-            flash(
-              onField && !replacement
-                ? `${E.getPlayer(game, id).name} off — playing short`
-                : `${E.getPlayer(game, id).name} is out`,
-              [['Undo', () => setGame((g) => E.undo(g))]]
-            );
+            setLastActionLabel(label);
+            flash(label, [['Undo', () => setGame((g) => E.undo(g, nowMs))]]);
           }}
         />
       )}
@@ -397,11 +416,39 @@ export default function App() {
       {showScore && (
         <ScoreDialog
           score={game.score}
+          scorers={game.scorers ?? []}
           onClose={() => setShowScore(false)}
+          onGoal={() => setSheet({ kind: 'goal' })}
+          onUndoGoal={() => setGame(E.removeLastGoal(game))}
           onChange={(index, delta) => {
             const next = [...game.score];
             next[index] = Math.max(0, next[index] + delta);
             setGame(E.setScore(game, next[0], next[1]));
+          }}
+        />
+      )}
+
+      {sheet?.kind === 'goal' && (
+        <GoalScorerSheet
+          state={game}
+          nowMs={nowMs}
+          onClose={() => setSheet(null)}
+          onChoose={(id) => {
+            setSheet(null);
+            setGame(E.addGoal(game, id, nowMs));
+          }}
+        />
+      )}
+
+      {confirmUndo && (
+        <ConfirmDialog
+          title="Undo last action?"
+          message={lastActionLabel ? `This undoes: ${lastActionLabel}.` : undefined}
+          confirmLabel="Undo"
+          onClose={() => setConfirmUndo(false)}
+          onConfirm={() => {
+            setGame(E.undo(game, nowMs));
+            setConfirmUndo(false);
           }}
         />
       )}

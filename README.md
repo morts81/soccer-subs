@@ -61,8 +61,8 @@ A player who comes off early always has zero rest at the moment they hit the ben
 
 - **The game clock keeps running while dialogs are open.** It should match the referee's watch. Pausing it every rotation loses several minutes across a game. `pauseGameClockOnDialog` turns it on for unrefereed grades.
 - **The rotation dialog is deferred, not stacked.** If a swap is in progress when the timer hits zero, the countdown holds at `00:00`, the button goes red, and the dialog waits. A dialog appearing under a thumb mid-tap is how the wrong three players get subbed.
-- **Cancelling the rotation postpones it and restarts the interval.** It doesn't skip. A skip that silently costs a kid five minutes is hard to notice and harder to explain.
-- **Undo restores a full snapshot** rather than inverting the last operation. Simpler and always correct, including after several rapid swaps.
+- **Cancelling the rotation postpones it — the countdown keeps running, it does not restart.** It doesn't skip either: the sub just stays due (the button stays red) until the coach taps it again, instead of silently costing a kid five minutes or nagging the dialog back open every quarter-second.
+- **Undo restores a full snapshot** rather than inverting the last operation. Simpler and always correct, including after several rapid swaps. The wall clock is the exception — `periodElapsedMs` comes from the current state, not the snapshot, so undoing a swap can't make the displayed game clock jump backwards.
 - **A returning injured player goes to the bench, never straight onto the field.**
 - **"Players swapped each time" defaults to the bench size**, not a fixed number — 6 + keeper on the pitch out of a 9-player squad defaults to swapping 2, the whole bench, each rotation. Touch the slider yourself and the default stops following squad or field-size changes; `subsPerRotationAuto` tracks whether you have.
 

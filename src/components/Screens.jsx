@@ -10,12 +10,25 @@ export function SetupScreen({ savedTeam, onStart, onRestore, error }) {
   const [names, setNames] = useState(savedTeam?.names ?? []);
   const [teamName, setTeamName] = useState(savedTeam?.name ?? '');
   const [draft, setDraft] = useState('');
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
 
   const add = () => {
     const clean = draft.trim();
     if (!clean) return;
     setNames([...names, clean]);
     setDraft('');
+  };
+
+  const startEdit = (i) => {
+    setEditingIndex(i);
+    setEditDraft(names[i]);
+  };
+
+  const saveEdit = () => {
+    const clean = editDraft.trim();
+    if (clean) setNames((prev) => prev.map((n, j) => (j === editingIndex ? clean : n)));
+    setEditingIndex(null);
   };
 
   return (
@@ -54,12 +67,39 @@ export function SetupScreen({ savedTeam, onStart, onRestore, error }) {
         {names.length === 0 ? (
           <p className="lede">No players yet. Add the first one above.</p>
         ) : (
-          names.map((n, i) => (
-            <div className="playerline" key={`${n}-${i}`}>
-              <span className="playerline__name">{n}</span>
-              <button onClick={() => setNames(names.filter((_, j) => j !== i))}>Remove</button>
-            </div>
-          ))
+          names.map((n, i) =>
+            editingIndex === i ? (
+              <div className="playerline" key={i}>
+                <input
+                  type="text"
+                  className="playerline__edit"
+                  value={editDraft}
+                  autoFocus
+                  onChange={(e) => setEditDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveEdit();
+                    if (e.key === 'Escape') setEditingIndex(null);
+                  }}
+                  onBlur={saveEdit}
+                />
+              </div>
+            ) : (
+              <div className="playerline" key={i}>
+                <button className="playerline__name" onClick={() => startEdit(i)}>
+                  {n}
+                </button>
+                <button className="playerline__edit-btn" onClick={() => startEdit(i)}>
+                  Edit
+                </button>
+                <button
+                  className="playerline__remove"
+                  onClick={() => setNames(names.filter((_, j) => j !== i))}
+                >
+                  Remove
+                </button>
+              </div>
+            )
+          )
         )}
 
         {isIOS() && !isStandalone() && (

@@ -49,6 +49,9 @@ export function encodeGame(state, kind = 'live', teamName = '') {
       Math.round(state.clock.lastRotationMs / 1000),
     ],
     sc: kind === 'setup' ? undefined : state.score,
+    gs: kind === 'setup' || !state.scorers?.length
+      ? undefined
+      : state.scorers.map((g) => [g.name ?? '', Math.round(g.atMs / 1000)]),
   };
   return b64urlEncode(JSON.stringify(payload));
 }
@@ -90,6 +93,13 @@ export function decodeGame(encoded) {
     state.clock.lastRotationMs = (payload.c[2] ?? 0) * 1000;
   }
   if (payload.sc) state.score = payload.sc;
+  if (payload.gs) {
+    state.scorers = payload.gs.map(([name, seconds]) => ({
+      id: state.players.find((p) => p.name === name)?.id ?? null,
+      name: name || null,
+      atMs: (seconds ?? 0) * 1000,
+    }));
+  }
   return { state, kind: payload.t ?? 'setup', teamName: payload.n ?? '' };
 }
 

@@ -65,11 +65,24 @@ describe('scheduled rotation (§A5)', () => {
   });
 
   it('cancelling postpones rather than skips (D2b)', () => {
-    const proposed = E.proposeRotation(game);
-    const after = E.postponeRotation(proposed, 300_000);
+    const proposed = E.proposeRotation(game, 300_000);
+    const after = E.postponeRotation(proposed);
     expect(after.pendingRotation).toBeNull();
-    expect(E.msUntilRotation(after, 300_000)).toBe(300_000);
     expect(names(after, E.roles(after).nextOff)).toEqual(['Val', 'Kora', 'Dylan']);
+  });
+
+  it('postponing does not reset the countdown — it stays due (D2b)', () => {
+    const proposed = E.proposeRotation(game, 300_000);
+    const after = E.postponeRotation(proposed);
+    expect(after.clock.lastRotationMs).toBe(game.clock.lastRotationMs);
+    expect(E.msUntilRotation(after, 300_000)).toBe(0);
+    expect(after.clock.postponed).toBe(true);
+  });
+
+  it('applying a rotation clears the postponed flag', () => {
+    const proposed = E.postponeRotation(E.proposeRotation(game, 300_000));
+    const after = E.applyRotation(proposed, 300_000);
+    expect(after.clock.postponed).toBe(false);
   });
 });
 
@@ -252,6 +265,19 @@ describe('Scenario: Undo (§5.6)', () => {
     const undone = E.undo(b);
     expect(E.playedMs(undone, idOf(undone, 'Harriet'), 60_000)).toBe(before);
   });
+
+  it('does not rewind the displayed game clock', () => {
+    const a = E.earlySwap(game, idOf(game, 'Pippa'), idOf(game, 'Harriet'), 60_000);
+    // Real time has moved on well past the swap by the time it's undone.
+    const undone = E.undo(a, 600_000);
+    expect(undone.clock.periodElapsedMs).toBe(600_000);
+  });
+
+  it('still restores lastRotationMs, which governs scheduling rather than wall time', () => {
+    const rotated = E.applyRotation(game, 300_000);
+    const undone = E.undo(rotated, 900_000);
+    expect(undone.clock.lastRotationMs).toBe(0);
+  });
 });
 
 describe('time accounting (§4.5)', () => {
@@ -353,5 +379,51 @@ describe('fairness advice', () => {
   it('is content when the interval already divides evenly', () => {
     const s = E.createGame(NAMES, { rotationSeconds: 240 });
     expect(E.fairnessAdvice(s).evenlyDivides).toBe(true);
+  });
+});
+
+describe('leastTimeId', () => {
+  it('picks the single most-underplayed candidate', () => {
+    const bench = E.roles(game).bench;
+    bench.forEach((id, i) => {
+      game.players.find((p) => p.id === id).accumulatedMs = i * 60_000;
+    });
+    expect(E.leastTimeId(game, bench, 0)).toBe(bench[0]);
+  });
+
+  it('returns null when the lowest time is tied — e.g. kickoff, everyone at 0:00', () => {
+    const bench = E.roles(game).bench;
+    expect(E.leastTimeId(game, bench, 0)).toBeNull();
+  });
+
+  it('returns null for an empty candidate list', () => {
+    expect(E.leastTimeId(game, [], 0)).toBeNull();
+  });
+});
+
+describe('goal scoring', () => {
+  it('records an attributed goal and increments the score', () => {
+    const scorer = idOf(game, 'Kit');
+    const after = E.addGoal(game, scorer, 0);
+    expect(after.score[0]).toBe(1);
+    expect(after.scorers).toEqual([{ id: scorer, name: 'Kit', atMs: 0 }]);
+  });
+
+  it('records an unattributed goal when no scorer is chosen', () => {
+    const after = E.addGoal(game, null, 0);
+    expect(after.score[0]).toBe(1);
+    expect(after.scorers).toEqual([{ id: null, name: null, atMs: 0 }]);
+  });
+
+  it('removing the last goal drops the score and the matching scorer entry', () => {
+    const withGoal = E.addGoal(game, idOf(game, 'Kit'), 0);
+    const reverted = E.removeLastGoal(withGoal);
+    expect(reverted.score[0]).toBe(0);
+    expect(reverted.scorers).toEqual([]);
+  });
+
+  it('does not go below zero goals', () => {
+    const reverted = E.removeLastGoal(game);
+    expect(reverted.score[0]).toBe(0);
   });
 });

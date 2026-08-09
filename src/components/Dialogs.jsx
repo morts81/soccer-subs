@@ -17,6 +17,30 @@ export function Scrim({ children, center, onClose }) {
   );
 }
 
+/** A destructive or hard-to-parse action, gated behind an explicit choice. */
+export function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onClose }) {
+  return (
+    <Scrim center onClose={onClose}>
+      <div className="dialog" role="dialog" aria-modal="true">
+        <h2>{title}</h2>
+        {message && (
+          <p style={{ color: 'var(--ink-soft)', fontSize: 15, lineHeight: 1.45, margin: '0 0 16px' }}>
+            {message}
+          </p>
+        )}
+        <div className="dialog__actions">
+          <button className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn--primary" onClick={onConfirm}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Scrim>
+  );
+}
+
 /** The dialog that already exists in the prototype (§A6, §A6b). */
 export function RotationDialog({ state, onConfirm, onPostpone }) {
   const { off, on } = state.pendingRotation;
@@ -118,6 +142,29 @@ export function KeeperSheet({ state, nowMs, onClose, onChoose }) {
   );
 }
 
+/** Attributing a goal is optional — the score already counted before this opens. */
+export function GoalScorerSheet({ state, nowMs, onClose, onChoose }) {
+  const r = E.roles(state, nowMs);
+  const ids = [r.keeperId, ...r.field, ...r.bench].filter(Boolean);
+  return (
+    <Scrim onClose={onClose}>
+      <div className="sheet" role="dialog" aria-modal="true">
+        <div className="sheet__head">
+          <div className="sheet__title">Who scored?</div>
+        </div>
+        {ids.map((id) => (
+          <button key={id} className="sheet__item" onClick={() => onChoose(id)}>
+            {E.getPlayer(state, id).name}
+          </button>
+        ))}
+        <button className="sheet__item" onClick={() => onChoose(null)}>
+          No scorer
+        </button>
+      </div>
+    </Scrim>
+  );
+}
+
 export function ReasonSheet({ name, onClose, onChoose }) {
   return (
     <Scrim onClose={onClose}>
@@ -140,15 +187,15 @@ export function ReasonSheet({ name, onClose, onChoose }) {
   );
 }
 
-export function ScoreDialog({ score, onChange, onClose }) {
-  const Stepper = ({ label, value, index }) => (
+export function ScoreDialog({ score, scorers = [], onGoal, onUndoGoal, onChange, onClose }) {
+  const Stepper = ({ label, value, onMinus, onPlus }) => (
     <div style={{ marginBottom: 18 }}>
       <div style={{ fontSize: 15, marginBottom: 8 }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 22 }}>
         <button
           className="btn"
           style={{ width: 60, flex: 'none', borderRadius: 999 }}
-          onClick={() => onChange(index, -1)}
+          onClick={onMinus}
           aria-label={`${label} down`}
         >
           −
@@ -159,7 +206,7 @@ export function ScoreDialog({ score, onChange, onClose }) {
         <button
           className="btn"
           style={{ width: 60, flex: 'none', borderRadius: 999 }}
-          onClick={() => onChange(index, 1)}
+          onClick={onPlus}
           aria-label={`${label} up`}
         >
           +
@@ -172,8 +219,18 @@ export function ScoreDialog({ score, onChange, onClose }) {
     <Scrim center onClose={onClose}>
       <div className="dialog" role="dialog" aria-modal="true">
         <h2>Score</h2>
-        <Stepper label="Us" value={score[0]} index={0} />
-        <Stepper label="Them" value={score[1]} index={1} />
+        <Stepper label="Us" value={score[0]} onMinus={onUndoGoal} onPlus={onGoal} />
+        {scorers.length > 0 && (
+          <div className="note" style={{ marginTop: -6 }}>
+            Goals: {scorers.map((g) => g.name ?? 'Unattributed').join(', ')}
+          </div>
+        )}
+        <Stepper
+          label="Them"
+          value={score[1]}
+          onMinus={() => onChange(1, -1)}
+          onPlus={() => onChange(1, 1)}
+        />
         <button className="btn btn--primary btn--full" onClick={onClose}>
           Done
         </button>

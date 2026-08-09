@@ -49,8 +49,9 @@ export function createGame(names = [], settings = {}) {
     settings: { ...DEFAULT_SETTINGS, ...settings },
     players,
     order: players.map((p) => p.id),
-    clock: { period: 1, running: false, periodElapsedMs: 0, lastRotationMs: 0 },
+    clock: { period: 1, running: false, periodElapsedMs: 0, lastRotationMs: 0, postponed: false },
     score: [0, 0],
+    scorers: [],
     pendingRotation: null, // §A6b — proposed, never auto-applied
     events: [],
     undoStack: [],
@@ -258,14 +259,28 @@ function pushUndo(state) {
   ];
 }
 
-/** §5.6 — restore a full snapshot rather than inverting an operation. */
-export function undo(state) {
+/**
+ * §5.6 — restore a full snapshot rather than inverting an operation.
+ *
+ * The roster and playing time roll back to the snapshot; the wall clock does
+ * not. Real time has kept passing since that snapshot was taken, and
+ * rewinding `periodElapsedMs` to a stale value made the displayed game clock
+ * visibly jump backwards on every undo — confusing, and not what "undo the
+ * last swap" means. `period` and `lastRotationMs` still come from the
+ * snapshot: they govern rotation scheduling, not wall time, so reversing a
+ * rotation or a period change needs them restored.
+ */
+export function undo(state, nowMs) {
   if (!state.undoStack.length) return state;
   const next = clone(state);
   const snap = next.undoStack.pop();
   next.order = snap.order;
   next.players = next.players.map((p) => snap.players.find((s) => s.id === p.id) ?? p);
-  next.clock = snap.clock;
+  next.clock = {
+    ...snap.clock,
+    running: state.clock.running,
+    periodElapsedMs: nowMs ?? state.clock.periodElapsedMs,
+  };
   next.pendingRotation = null;
   logEvent(next, { type: 'UNDO' });
   return next;
@@ -313,16 +328,23 @@ export function applyRotation(state, nowMs) {
   });
 
   next.clock.lastRotationMs = t;
+  next.clock.postponed = false;
   next.pendingRotation = null;
   logEvent(next, { type: 'ROTATION', off, on });
   return syncStints(next, t);
 }
 
-/** Cancelling postpones rather than skips (§5.9, D2b). */
-export function postponeRotation(state, nowMs) {
+/**
+ * Cancelling postpones rather than skips (§5.9, D2b): the countdown keeps
+ * running instead of jumping back to a full fresh interval, so postponing
+ * doesn't cost a kid extra minutes on the pitch. `postponed` just stops the
+ * dialog re-proposing itself on every tick — the sub stays due (the button
+ * stays red) until the coach taps it again themselves.
+ */
+export function postponeRotation(state) {
   const next = clone(state);
   next.pendingRotation = null;
-  next.clock.lastRotationMs = now_(next, nowMs);
+  next.clock.postponed = true;
   logEvent(next, { type: 'ROTATION_POSTPONED' });
   return next;
 }
@@ -639,6 +661,7 @@ export function startNextPeriod(state) {
   next.clock.periodElapsedMs = 0;
   next.clock.lastRotationMs = 0;
   next.clock.running = false;
+  next.clock.postponed = false;
   next.pendingRotation = null;
   for (const p of next.players) {
     p.stintStartMs = null;
@@ -652,6 +675,41 @@ export function setScore(state, team, opponent) {
   const next = clone(state);
   next.score = [Math.max(0, team), Math.max(0, opponent)];
   return next;
+}
+
+/** A team goal, optionally attributed to a player. Not undo-able like a swap — it's a scoreline correction, not a roster move. */
+export function addGoal(state, scorerId, nowMs) {
+  const next = clone(state);
+  next.score = [next.score[0] + 1, next.score[1]];
+  const scorer = scorerId ? getPlayer(next, scorerId) : null;
+  next.scorers = [
+    ...(next.scorers ?? []),
+    { id: scorer?.id ?? null, name: scorer?.name ?? null, atMs: now_(next, nowMs) },
+  ];
+  return next;
+}
+
+/** Corrects a mistaken tap on the goal stepper — drops the matching scorer entry too. */
+export function removeLastGoal(state) {
+  const next = clone(state);
+  if (next.score[0] <= 0) return next;
+  next.score = [next.score[0] - 1, next.score[1]];
+  next.scorers = (next.scorers ?? []).slice(0, -1);
+  return next;
+}
+
+/**
+ * The single most-underplayed candidate among `ids`, or null when two or
+ * more are tied for least. Tagging one arbitrary player "Least time" out of
+ * a tie — everyone at 0:00 at kickoff is the common case — reads as a claim
+ * the data doesn't support.
+ */
+export function leastTimeId(state, ids, nowMs) {
+  if (!ids.length) return null;
+  const times = ids.map((id) => playedMs(state, id, nowMs));
+  const min = Math.min(...times);
+  const winners = ids.filter((_, i) => times[i] === min);
+  return winners.length === 1 ? winners[0] : null;
 }
 
 export const formatMs = (ms) => {
