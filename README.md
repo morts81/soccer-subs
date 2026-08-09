@@ -88,6 +88,14 @@ Two opposite holds, both on the long-press sheet, both released by the same tap 
 - **Keep on** (`heldOn`) skips a player in the next-off group without moving them down the queue, so releasing the hold puts them exactly where they would have been. Holding players on shrinks *both* sides of the swap — hold two of a group of three and only one comes off, so only one comes on, because otherwise the field quietly grows. Cleared automatically if the player leaves the field anyway, and at half time: "keep them on" is about the passage of play in front of the coach, not a standing order.
 - **Take out for the rest of the game** (`unavailable`) freezes their clock and takes them out of the rotation until explicitly brought back — injuries, or a player who has gone home. They return to the bench, never straight onto the field.
 
+## Updating a home-screen install
+
+An installed PWA doesn't fetch a new build just by being reopened — that's the platform, not this app. A new version installs quietly in the background and then sits "waiting", because activating it needs every open tab or window on the old version closed first, which on a home-screen install means force-quitting the app rather than something that happens on its own. `registerType: 'prompt'` (never `autoUpdate`) exists so a coach mid-match is never the one who discovers this: the service worker installs but doesn't take over on its own.
+
+`useServiceWorkerUpdate` surfaces it as a banner — "A new version is ready" — the next time the app is open and online. Tapping **Update** reloads the page, which is exactly the disruption `prompt` mode is there to make optional: do it between games, not during one. Tapping **Later** dismisses it for this session; the banner reappears next launch until you update.
+
+If the banner never shows and you want the new build now: force-quit the app (swipe it away, don't just background it) and reopen it while online.
+
 ## Storage
 
 Safari clears script-writable storage after seven days without interaction, and this app is used once a week — right on the boundary. Home-screen installs are exempt, so the setup screen prompts iOS users to install rather than treating it as optional. `navigator.storage.persist()` is requested as well, though it's undocumented whether it outranks ITP on iOS.

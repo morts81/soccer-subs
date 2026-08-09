@@ -3,6 +3,7 @@ import * as E from './engine/rotation.js';
 import { decodeGame, readIncomingLink, TransferError } from './engine/transfer.js';
 import * as store from './engine/persistence.js';
 import { useGameClock, useWakeLock } from './hooks/useGameClock.js';
+import { useServiceWorkerUpdate } from './hooks/useServiceWorkerUpdate.js';
 import PlayerRow from './components/PlayerRow.jsx';
 import {
   ConfirmDialog,
@@ -37,6 +38,18 @@ export default function App() {
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [confirmPause, setConfirmPause] = useState(false);
   const [lastActionLabel, setLastActionLabel] = useState(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+
+  const { needRefresh, applyUpdate } = useServiceWorkerUpdate();
+  const updateBanner = needRefresh && !updateDismissed ? (
+    <Toast
+      message="A new version is ready — updating reloads the app, so do it between games."
+      actions={[
+        ['Update', applyUpdate],
+        ['Later', () => setUpdateDismissed(true)],
+      ]}
+    />
+  ) : null;
 
   const toastTimer = useRef(null);
 
@@ -193,56 +206,70 @@ export default function App() {
 
   if (!game) {
     return (
-      <SetupScreen
-        savedTeam={store.loadTeam()}
-        error={setupError}
-        onRestore={() => setSetupError('Open the link your coach sent and it will load here.')}
-        onStart={(names, name) => {
-          store.saveTeam({ name, names });
-          setTeamName(name);
-          const subsPerRotation = E.defaultSubsPerRotation(names.length, E.DEFAULT_SETTINGS);
-          setGame(E.createGame(names, { subsPerRotation }));
-        }}
-      />
+      <>
+        <SetupScreen
+          savedTeam={store.loadTeam()}
+          error={setupError}
+          onRestore={() => setSetupError('Open the link your coach sent and it will load here.')}
+          onStart={(names, name) => {
+            store.saveTeam({ name, names });
+            setTeamName(name);
+            const subsPerRotation = E.defaultSubsPerRotation(names.length, E.DEFAULT_SETTINGS);
+            setGame(E.createGame(names, { subsPerRotation }));
+          }}
+        />
+        {updateBanner}
+      </>
     );
   }
 
   if (screen === 'settings') {
     return (
-      <SettingsScreen
-        state={game}
-        onChange={(settings) => setGame({ ...game, settings })}
-        onPlayers={() => setScreen('players')}
-        onDone={() => setScreen('game')}
-        onNewGame={() => {
-          store.clearGame();
-          const names = game.players.map((p) => p.name);
-          const settings = game.settings.subsPerRotationAuto
-            ? { ...game.settings, subsPerRotation: E.defaultSubsPerRotation(names.length, game.settings) }
-            : game.settings;
-          setGame(E.createGame(names, settings));
-          setScreen('game');
-        }}
-      />
+      <>
+        <SettingsScreen
+          state={game}
+          onChange={(settings) => setGame({ ...game, settings })}
+          onPlayers={() => setScreen('players')}
+          onDone={() => setScreen('game')}
+          onNewGame={() => {
+            store.clearGame();
+            const names = game.players.map((p) => p.name);
+            const settings = game.settings.subsPerRotationAuto
+              ? { ...game.settings, subsPerRotation: E.defaultSubsPerRotation(names.length, game.settings) }
+              : game.settings;
+            setGame(E.createGame(names, settings));
+            setScreen('game');
+          }}
+        />
+        {updateBanner}
+      </>
     );
   }
 
   if (screen === 'players') {
     return (
-      <PlayersScreen
-        state={game}
-        nowMs={nowMs}
-        onAdd={(name, credit) => {
-          commit(E.addPlayerMidGame(game, name, credit, nowMs), nowMs);
-          setLastActionLabel(`${name} added to the squad`);
-        }}
-        onDone={() => setScreen('game')}
-      />
+      <>
+        <PlayersScreen
+          state={game}
+          nowMs={nowMs}
+          onAdd={(name, credit) => {
+            commit(E.addPlayerMidGame(game, name, credit, nowMs), nowMs);
+            setLastActionLabel(`${name} added to the squad`);
+          }}
+          onDone={() => setScreen('game')}
+        />
+        {updateBanner}
+      </>
     );
   }
 
   if (screen === 'transfer') {
-    return <TransferScreen state={game} teamName={teamName} onDone={() => setScreen('game')} />;
+    return (
+      <>
+        <TransferScreen state={game} teamName={teamName} onDone={() => setScreen('game')} />
+        {updateBanner}
+      </>
+    );
   }
 
   /* ---- game screen ----------------------------------------------------- */
@@ -518,7 +545,7 @@ export default function App() {
         />
       )}
 
-      {toast && <Toast message={toast.message} actions={toast.actions} />}
+      {toast ? <Toast message={toast.message} actions={toast.actions} /> : updateBanner}
     </div>
   );
 }
