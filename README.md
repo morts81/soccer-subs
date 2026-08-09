@@ -74,7 +74,12 @@ A player who comes off early always has zero rest at the moment they hit the ben
 
 It matters because a half that stops mid-cycle leaves a spread — 8 rotations of a 10-rotation cycle means some players are two stints up. If the same eleven simply walk back out after the break, that gap is locked in and the second half *compounds* the first half's unfairness instead of cancelling it. Re-seeding is what a break is for. `balanceAtPeriodStart` turns it off.
 
-The keeper is deliberately left in goal. Who keeps is a coaching decision, not a fairness one, and silently swapping keepers at half time is a nasty surprise on the touchline.
+The keeper is deliberately left in goal. Who keeps is a coaching decision, not a fairness one, and silently swapping keepers at half time is a nasty surprise on the touchline. Changing keeper is a deliberate action, and which one you want depends on whether the outgoing keeper keeps playing:
+
+| You want | Do this | What moves |
+|---|---|---|
+| Keeper plays out, someone else keeps | Long-press that outfield player → **Put in goal** | Two players trade places. Bench untouched. |
+| Keeper comes off entirely | Tap the keeper's row → **Who goes in goal?** | Keeper to the bench by playing time; if you pick an outfielder, a bench player fills the vacated slot. |
 
 ## Holding a player on or out
 

@@ -201,6 +201,23 @@ describe('Scenario: Keeper off early (§5.1)', () => {
     expect(names(after, r.field)).toContain('Dottie');
     expect(names(after, r.bench)).toEqual(['Harriet', 'Leni', 'Claudia', 'Amelia']);
   });
+
+  // The long-press sheet offers "Bring on in goal" for bench players, which
+  // routes to the same call. A bench player has no field slot to trade.
+  it('putting a bench player in goal does not list them twice', () => {
+    const after = E.swapKeeperWithField(game, idOf(game, 'Leni'), 60_000);
+    expect(new Set(after.order).size).toBe(after.order.length);
+    expect(after.order).toHaveLength(after.players.length);
+  });
+
+  it('putting a bench player in goal benches the old keeper by playing time', () => {
+    const after = E.swapKeeperWithField(game, idOf(game, 'Leni'), 60_000);
+    const r = E.roles(after);
+    expect(nameOf(after, r.keeperId)).toBe('Leni');
+    expect(names(after, r.field)).toEqual(['Val', 'Kora', 'Dylan', 'Pippa', 'Kit', 'Chanel']);
+    // Dottie kept for the full minute, so she sits behind the three who didn't.
+    expect(names(after, r.bench)).toEqual(['Harriet', 'Claudia', 'Amelia', 'Dottie']);
+  });
 });
 
 describe('Scenario: Empty bench (§5.2)', () => {

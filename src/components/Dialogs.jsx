@@ -134,7 +134,9 @@ export function KeeperSheet({ state, nowMs, onClose, onChoose }) {
             {E.getPlayer(state, r.keeperId)?.name} comes off
           </div>
         </div>
-        {r.bench.slice(0, 4).map((id) => (
+        {/* The whole bench, not the first few — with a big squad the keeper you
+            want was often the one the list cut off, and the sheet scrolls. */}
+        {r.bench.map((id) => (
           <button key={id} className="sheet__item" onClick={() => onChoose('bench', id)}>
             <span style={{ flex: 1 }}>{E.getPlayer(state, id).name}</span>
             <span className="row__role">off the bench</span>

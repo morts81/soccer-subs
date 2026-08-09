@@ -447,6 +447,13 @@ export function swapKeeperWithField(state, fieldId, nowMs) {
   const r = roles(next, t);
   if (!r.keeperId) return next;
 
+  // The long-press sheet offers "Bring on in goal" for bench players too, and a
+  // bench player has no field slot to trade. Running the straight swap below
+  // would list them twice — in goal and still on the bench — and strand the
+  // outgoing keeper at the very back of the queue. That move is an early swap
+  // with the keeper coming off, which already places them by playing time.
+  if (!r.field.includes(fieldId)) return earlySwap(state, r.keeperId, fieldId, t);
+
   pushUndo(next);
   rebuild(next, {
     keeperId: fieldId,
