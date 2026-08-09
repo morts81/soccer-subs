@@ -114,6 +114,51 @@ describe('Scenario: Basic early swap', () => {
     // Pippa (7:30) slots between Leni (6:40) and Claudia (8:20).
     expect(names(after, E.roles(after, 0).bench)).toEqual(['Leni', 'Pippa', 'Claudia', 'Amelia']);
   });
+
+  it('places the incoming player in the field order by playing time (§4.1)', () => {
+    const s = E.createGame(NAMES);
+    s.clock.running = true;
+    const set = (n, ms) => (s.players.find((p) => p.name === n).accumulatedMs = ms);
+    s.players.forEach((p) => (p.accumulatedMs = 600_000));
+    set('Amelia', 900_000); // on the bench, but already the most played of anyone
+    set('Kit', 60_000); // on the field, has barely featured
+    set('Chanel', 60_000);
+
+    const after = E.earlySwap(s, idOf(s, 'Val'), idOf(s, 'Amelia'), 600_000);
+    const field = names(after, E.roles(after, 600_000).field);
+    // Amelia does not get parked behind the two who have played least.
+    expect(field.indexOf('Amelia')).toBeLessThan(field.indexOf('Kit'));
+    expect(field.indexOf('Amelia')).toBeLessThan(field.indexOf('Chanel'));
+    expect(names(after, E.roles(after, 600_000).nextOff)).toContain('Amelia');
+  });
+
+  // The reported bug: a run of unscheduled subs left the four players with the
+  // least time marked "next off" while the two with the most stayed on.
+  it('never proposes taking off a player with less time than one staying on', () => {
+    const SQUAD = ['Amelia', 'Chanel', 'Harriet', 'Pippa', 'Dylan', 'Leni', 'Val', 'Claudia', 'Dottie'];
+    const sw = (st, off, on, t) =>
+      E.syncStints(E.earlySwap(st, idOf(st, off), idOf(st, on), t), t);
+
+    let s = E.createGame(SQUAD, { subsPerRotation: 2 });
+    s.clock.running = true;
+    s = E.syncStints(s, 0);
+    // Chanel and Harriet bank a big share, come off for the two who have not
+    // played, then get swapped back on while those two are still out there.
+    s = sw(s, 'Chanel', 'Claudia', 400_000);
+    s = sw(s, 'Harriet', 'Dottie', 400_000);
+    s = sw(s, 'Pippa', 'Chanel', 500_000);
+    s = sw(s, 'Dylan', 'Harriet', 500_000);
+    s = sw(s, 'Leni', 'Pippa', 600_000);
+    s = sw(s, 'Val', 'Dylan', 600_000);
+
+    const t = 700_000;
+    const r = E.roles(s, t);
+    const played = (id) => E.playedMs(s, id, t);
+    const staying = r.field.filter((id) => !r.nextOff.includes(id));
+    expect(Math.min(...r.nextOff.map(played))).toBeGreaterThanOrEqual(
+      Math.max(...staying.map(played))
+    );
+  });
 });
 
 describe('Scenario: Next-off group backfills (§4.3)', () => {

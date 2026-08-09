@@ -58,6 +58,14 @@ Note the last row. **Time-balanced selection is worse than the plain queue when 
 
 After one early swap across a full game, eight of ten outfield players still land exactly on the mean. The incoming player gains roughly a stint, the outgoing loses part of one. That's explicable to a parent, which matters more than it sounds. The by-time bench insertion is what keeps it contained — remove it and the imbalance persists for the rest of the game.
 
+**2b. Both sides of an early swap insert by time — the field side was missing.**
+
+§4.1 says a player coming on early goes to the *back* of the field order, so they get a full stint and never come straight back off. That rationale assumes the incoming player is the one who has waited longest, which is true of a scheduled rotation and not of a coach's early swap. Swap on someone who has already played a lot and an unconditional back-of-queue parks the most-played player exactly where the rotation can't reach them; after a few such swaps the next-off group fills with whoever has played *least*, which is the inversion of the entire point of the app.
+
+`placeOnField()` is the mirror of §4.2's `placeOnBench()`: insert by playing time, descending. §4.1 still holds for the ordinary case, because a player arriving with the least time — and a player arriving level with everyone, which is the undisturbed queue — still sorts to the back.
+
+Only early swaps use it. A scheduled rotation still appends, unconditionally, because `on` comes off the front of a time-ordered bench and is therefore already the least played; the plain append is what makes the cycle come out exactly even. Sorting there too, or re-sorting on read in `roles()`, measurably improves the mid-cycle spread and costs the 0:00-at-a-cycle-boundary guarantee — the same trade the table above already rejects.
+
 **3. The rest guard belongs at rotation time, not at insertion time.**
 
 A player who comes off early always has zero rest at the moment they hit the bench. Testing eligibility when placing them pushes *every* early-off player to the back regardless of playing time — the exact unfairness the by-time rule exists to prevent. `benchEligible()` is therefore consulted when picking who comes on, not when deciding where someone sits. This was a bug in the spec before it was a bug in the code.

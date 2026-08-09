@@ -160,6 +160,11 @@ export function roles(state, nowMs) {
   // one can come on.
   const swapCount = Math.min(settings.subsPerRotation, rotatable.length, bench.length);
 
+  // Selection stays positional rather than re-sorting by playing time here.
+  // Both queues are already kept in time order by `placeOnField`/`placeOnBench`
+  // at the point players move, so on any state this build produces the two are
+  // the same answer — and re-sorting on every read costs the circular queue its
+  // even-at-the-cycle-boundary guarantee for no gain (§D1).
   return {
     keeperId,
     field,
@@ -205,6 +210,32 @@ function placeOnBench(state, bench, id, nowMs) {
   if (mode === 'frontOfBench') out.unshift(id);
   else if (mode === 'backOfBench') out.push(id);
   else out.splice(benchInsertIndex(state, bench, playedMs(state, id, nowMs), nowMs), 0, id);
+  return out;
+}
+
+/**
+ * §4.1, completed: where a player coming on *early* lands in the field order,
+ * ranked by playing time descending. The mirror of §4.2 on the other side of
+ * the swap, and used only for early swaps — a scheduled rotation appends,
+ * which is what keeps the circular queue exactly even at a cycle boundary.
+ *
+ * §4.1 says "back of the field order" so an incoming player gets a full stint
+ * and never comes straight back off. That still holds: a player arriving with
+ * the least time sorts to the back, and ties sort to the back too, so the
+ * ordinary case is unchanged. But it was written assuming the incoming player
+ * is the one who has waited longest, which is true of a rotation and not of a
+ * coach's early swap. Swap on someone who has *already* played a lot and an
+ * unconditional back-of-queue parks the most-played player where the rotation
+ * can never reach them, leaving the next-off group to fill with whoever has
+ * played least — the exact inversion of the job this app exists to do.
+ */
+export function fieldInsertIndex(state, field, ms, nowMs) {
+  return field.filter((id) => playedMs(state, id, nowMs) >= ms).length;
+}
+
+function placeOnField(state, field, id, nowMs) {
+  const out = [...field];
+  out.splice(fieldInsertIndex(state, field, playedMs(state, id, nowMs), nowMs), 0, id);
   return out;
 }
 
@@ -336,6 +367,13 @@ export function applyRotation(state, nowMs) {
   let bench = r.bench.filter((id) => !on.includes(id));
   for (const id of off) bench = placeOnBench(next, bench, id, t);
 
+  // Incoming players append to the back of the field, unconditionally. This is
+  // the circular queue doing its job: `on` comes off the front of a bench kept
+  // in ascending time order, so they are already the least played, and a plain
+  // append is what makes the queue come out exactly even at each cycle
+  // boundary. Sorting here instead — even "correctly", by time — trades that
+  // guarantee for a slightly better mid-cycle spread, and a full cycle is the
+  // target the settings advice steers the coach onto.
   rebuild(next, {
     keeperId: r.keeperId,
     field: [...r.field.filter((id) => !off.includes(id)), ...on],
@@ -399,9 +437,9 @@ export function earlySwap(state, offId, onId, nowMs) {
 
   rebuild(next, {
     keeperId: r.keeperId,
-    // §4.1 — incoming goes to the back of the field order, so they get a full
-    // stint and can never come on and straight back off.
-    field: [...r.field.filter((id) => id !== offId), onId],
+    // §4.1 — incoming slots into the field order by playing time, which puts
+    // the usual least-played arrival at the back for a full stint.
+    field: placeOnField(next, r.field.filter((id) => id !== offId), onId, t),
     // §4.2 — outgoing inserts into the bench by playing time.
     bench: placeOnBench(next, r.bench.filter((id) => id !== onId), offId, t),
   });
