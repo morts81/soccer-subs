@@ -41,7 +41,12 @@ export function encodeGame(state, kind = 'live', teamName = '') {
     // figure would silently drop up to a full stint each on handover.
     p: state.order.map((id) => {
       const pl = state.players.find((x) => x.id === id);
-      return [pl.name, Math.round(playedMs(state, id) / 1000), pl.unavailable ? 1 : 0];
+      return [
+        pl.name,
+        Math.round(playedMs(state, id) / 1000),
+        pl.unavailable ? 1 : 0,
+        pl.heldOn ? 1 : 0,
+      ];
     }),
     c: kind === 'setup' ? undefined : [
       state.clock.period,
@@ -83,9 +88,10 @@ export function decodeGame(encoded) {
 
   const names = (payload.p ?? []).map(([name]) => name);
   const state = createGame(names, payload.s ?? {});
-  (payload.p ?? []).forEach(([, seconds, unavailable], i) => {
+  (payload.p ?? []).forEach(([, seconds, unavailable, heldOn], i) => {
     state.players[i].accumulatedMs = (seconds ?? 0) * 1000;
     if (unavailable) state.players[i].unavailable = { reason: 'other', atMs: 0 };
+    if (heldOn) state.players[i].heldOn = true;
   });
   if (payload.c) {
     state.clock.period = payload.c[0] ?? 1;

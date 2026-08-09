@@ -35,6 +35,7 @@ export default function App() {
   const [showScore, setShowScore] = useState(false);
   const [redWarning, setRedWarning] = useState(null);
   const [confirmUndo, setConfirmUndo] = useState(false);
+  const [confirmPause, setConfirmPause] = useState(false);
   const [lastActionLabel, setLastActionLabel] = useState(null);
 
   const toastTimer = useRef(null);
@@ -66,7 +67,9 @@ export default function App() {
 
   /* ---- clock ----------------------------------------------------------- */
 
-  const modalOpen = Boolean(game?.pendingRotation || sheet || swap || confirmUndo);
+  const modalOpen = Boolean(
+    game?.pendingRotation || sheet || swap || confirmUndo || confirmPause
+  );
   const clockRunning =
     Boolean(game?.clock.running) &&
     !(game?.settings.pauseGameClockOnDialog && modalOpen);
@@ -82,7 +85,7 @@ export default function App() {
   /* ---- rotation firing (§5.9) ------------------------------------------ */
 
   const rotationDue = game ? E.rotationDue(game, nowMs) : false;
-  const blocked = Boolean(swap || sheet || showScore || confirmUndo);
+  const blocked = Boolean(swap || sheet || showScore || confirmUndo || confirmPause);
 
   useEffect(() => {
     if (!game || !game.clock.running) return;
@@ -167,6 +170,11 @@ export default function App() {
       commit(E.swapKeeperWithField(game, id, nowMs), nowMs);
       setLastActionLabel(`${name} in goal`);
       flash(`${name} is in goal`);
+    } else if (action === 'hold') {
+      const { name, heldOn } = E.getPlayer(game, id);
+      commit(E.toggleHeldOn(game, id, nowMs), nowMs);
+      setLastActionLabel(heldOn ? `${name} released` : `${name} held on`);
+      flash(heldOn ? `${name} will rotate again` : `${name} stays on until you release them`);
     } else if (action === 'moveTo') {
       const name = E.getPlayer(game, id).name;
       const from = game.order.indexOf(id);
@@ -240,9 +248,32 @@ export default function App() {
   /* ---- game screen ----------------------------------------------------- */
 
   const untilRotation = E.msUntilRotation(game, nowMs);
-  const periodLeft = E.periodLengthMs(game) - nowMs;
+  const periodLeft = E.msLeftInPeriod(game, nowMs);
   const red = E.inRedWindow(game, nowMs);
-  const due = untilRotation <= 0;
+  const noMoreSubs = E.rotationsDone(game, nowMs);
+  // Everyone held on, or nobody left on the bench — the countdown is moot.
+  const canSub = roles.nextOff.length > 0 && roles.nextIn.length > 0;
+  const due = untilRotation <= 0 && !noMoreSubs;
+  const overPeriod = E.periodOver(game, nowMs);
+  const finalPeriod = E.isFinalPeriod(game);
+
+  const subLabel = noMoreSubs
+    ? overPeriod
+      ? finalPeriod ? 'Game over' : 'Period over'
+      : 'No more subs'
+    : !canSub
+    ? 'No subs available'
+    : due
+    ? `Sub now (${roles.nextOff.length})`
+    : E.formatMs(untilRotation);
+
+  const toggleClock = () => {
+    if (game.clock.running && game.settings.confirmPauseClock) {
+      setConfirmPause(true);
+      return;
+    }
+    commit(E.setClockRunning(game, !game.clock.running, nowMs), nowMs);
+  };
 
   const bannerText = swap
     ? swap.direction === 'off'
@@ -300,6 +331,28 @@ export default function App() {
         </div>
       )}
 
+      {overPeriod && (
+        <div className="banner warn">
+          <span>
+            {finalPeriod
+              ? `Full time · ${game.score[0]}–${game.score[1]}`
+              : `End of period ${game.clock.period}`}
+          </span>
+          {!finalPeriod && (
+            // Not commit() — startNextPeriod resets periodElapsedMs to zero and
+            // commit would immediately stamp the old elapsed time back over it.
+            <button
+              onClick={() => {
+                setGame(E.startNextPeriod(game, nowMs));
+                setLastActionLabel(`Period ${game.clock.period + 1} started`);
+              }}
+            >
+              Start period {game.clock.period + 1}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="roster">
         {game.order.map((id) => (
           <PlayerRow
@@ -320,24 +373,23 @@ export default function App() {
         <button
           className={`clockbtn clockbtn--rotation${red ? ' clockbtn--red' : ''}${
             due ? ' clockbtn--due' : ''
-          }`}
+          }${noMoreSubs || !canSub ? ' clockbtn--spent' : ''}`}
+          disabled={noMoreSubs || !canSub}
           onClick={() => setGame(E.proposeRotation(E.prepareRotation(game, nowMs), nowMs))}
         >
-          {due ? `Sub now (${game.settings.subsPerRotation})` : E.formatMs(untilRotation)}
+          {subLabel}
         </button>
 
         <button
           className="swapbtn"
+          disabled={!canSub}
           onClick={() => setGame(E.proposeRotation(E.prepareRotation(game, nowMs), nowMs))}
           aria-label="Substitute now"
         >
           ⇄
         </button>
 
-        <button
-          className="clockbtn"
-          onClick={() => commit(E.setClockRunning(game, !game.clock.running, nowMs), nowMs)}
-        >
+        <button className="clockbtn" onClick={toggleClock}>
           {E.formatMs(periodLeft)} {game.clock.running ? '⏸' : '▶'}
         </button>
       </div>
@@ -436,6 +488,19 @@ export default function App() {
           onChoose={(id) => {
             setSheet(null);
             setGame(E.addGoal(game, id, nowMs));
+          }}
+        />
+      )}
+
+      {confirmPause && (
+        <ConfirmDialog
+          title="Pause the game clock?"
+          message="Playing time stops for everyone on the field. The referee won't be stopping theirs, so only pause for a real stoppage."
+          confirmLabel="Pause"
+          onClose={() => setConfirmPause(false)}
+          onConfirm={() => {
+            commit(E.setClockRunning(game, false, nowMs), nowMs);
+            setConfirmPause(false);
           }}
         />
       )}

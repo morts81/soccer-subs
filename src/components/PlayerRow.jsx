@@ -57,6 +57,8 @@ export default function PlayerRow({
     ? swap.direction === 'off'
       ? 'Coming off'
       : 'Going on'
+    : player.heldOn
+    ? 'Staying on'
     : LABEL[role];
 
   return (

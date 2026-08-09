@@ -21,9 +21,12 @@ export const DEFAULT_SETTINGS = {
   periods: 2,
   minBenchRestSeconds: 90, // §4.2 guard
   absorbWindowSeconds: 60, // §4.4
+  minRotationRemainderSeconds: 180, // don't sub someone on for a token stint
   earlyOffPlacement: 'byTime', // 'byTime' | 'backOfBench' | 'frontOfBench'
   keeperTimeCounts: true,
   pauseGameClockOnDialog: false,
+  confirmPauseClock: true,
+  balanceAtPeriodStart: true,
   showFairnessDeviation: true,
   fairnessMode: 'queue', // 'queue' | 'balanced' (§4.6)
 };
@@ -39,6 +42,7 @@ export function createPlayer(name) {
     stintStartMs: null,
     lastOffMs: null,
     unavailable: null,
+    heldOn: false, // kept on the field until the coach releases them (§5.11)
   };
 }
 
@@ -141,21 +145,27 @@ export function roles(state, nowMs) {
   const field = active.slice(keeperSlots, keeperSlots + fieldCount);
   const bench = active.slice(keeperSlots + fieldCount);
 
+  // A held player is skipped by the rotation but keeps their place in `order`.
+  // The coach asked for them to stay on, not to move down the queue — so the
+  // moment the hold is released they're back where they would have been.
+  const rotatable = field.filter((id) => !getPlayer(state, id)?.heldOn);
+
   // Rested players first, bench order otherwise preserved. If too few are
   // eligible we still fill the slots — short-handed is worse than under-rested.
   const rested = bench.filter((id) => benchEligible(state, id, nowMs));
   const notRested = bench.filter((id) => !benchEligible(state, id, nowMs));
-  const nextIn = [...rested, ...notRested].slice(
-    0,
-    Math.min(settings.subsPerRotation, bench.length)
-  );
+
+  // Both sides of the swap must be the same size or the field count drifts:
+  // hold two players on out of a group of three and only one leaves, so only
+  // one can come on.
+  const swapCount = Math.min(settings.subsPerRotation, rotatable.length, bench.length);
 
   return {
     keeperId,
     field,
     bench,
-    nextOff: field.slice(0, Math.min(settings.subsPerRotation, field.length)),
-    nextIn,
+    nextOff: rotatable.slice(0, swapCount),
+    nextIn: [...rested, ...notRested].slice(0, swapCount),
     onFieldIds: keeperId ? [keeperId, ...field] : [...field],
   };
 }
@@ -217,6 +227,11 @@ export function syncStints(state, nowMs) {
   const r = roles(state, nowMs);
   const on = new Set(r.onFieldIds);
   for (const p of state.players) {
+    // A hold only means anything for someone actually on the field. Clearing it
+    // here rather than in each mutation means no path can leave a benched
+    // player silently held, ready to surprise the coach when they next come on.
+    if (p.heldOn && !on.has(p.id)) p.heldOn = false;
+
     const counts = state.settings.keeperTimeCounts || p.id !== r.keeperId;
     const shouldRun = on.has(p.id) && !p.unavailable && state.clock.running && counts;
     if (shouldRun && p.stintStartMs === null) p.stintStartMs = nowMs;
@@ -622,10 +637,33 @@ export function prepareRotation(state, nowMs) {
 export const periodLengthMs = (s) =>
   (s.settings.totalGameMinutes * 60 * 1000) / s.settings.periods;
 
+export const msLeftInPeriod = (state, nowMs) =>
+  periodLengthMs(state) - now_(state, nowMs);
+
+export const periodOver = (state, nowMs) => msLeftInPeriod(state, nowMs) <= 0;
+
+export const isFinalPeriod = (state) => state.clock.period >= state.settings.periods;
+
+export const gameOver = (state, nowMs) => periodOver(state, nowMs) && isFinalPeriod(state);
+
+/**
+ * Whether this period still has room for another rotation.
+ *
+ * The countdown is a plain modulo of elapsed time, so left alone it keeps
+ * proposing subs long after the half is over — and even before that, a
+ * rotation with ninety seconds left brings a player on for a stint too short
+ * to be worth the disruption, and takes one off who then never gets back on.
+ * `minRotationRemainderSeconds` is the floor below which the answer is simply
+ * "that's the half, no more subs".
+ */
+export const rotationsDone = (state, nowMs) =>
+  msLeftInPeriod(state, nowMs) <= state.settings.minRotationRemainderSeconds * 1000;
+
 export const msUntilRotation = (state, nowMs) =>
   state.settings.rotationSeconds * 1000 - (now_(state, nowMs) - state.clock.lastRotationMs);
 
-export const rotationDue = (state, nowMs) => msUntilRotation(state, nowMs) <= 0;
+export const rotationDue = (state, nowMs) =>
+  msUntilRotation(state, nowMs) <= 0 && !rotationsDone(state, nowMs);
 
 /** Inside the red-button window (§A6c) — used to warn before a swap. */
 export const inRedWindow = (state, nowMs) => {
@@ -654,21 +692,69 @@ export function endPeriod(state, nowMs) {
   return next;
 }
 
-export function startNextPeriod(state) {
+/**
+ * Second half, and the reason the first half's leftovers don't carry over.
+ *
+ * A positional queue only comes out even at whole cycle boundaries, so a half
+ * that stops mid-cycle leaves some players several minutes up on the rest. If
+ * the same eleven simply walk back on, that gap is locked in for the rest of
+ * the game — the second half compounds the first half's unfairness instead of
+ * correcting it. Re-seeding by playing time is the whole point of having a
+ * break: the least-played start, the most-played sit.
+ *
+ * The keeper is left alone. Who goes in goal is a coaching decision, not a
+ * fairness one, and silently swapping keepers at half time would be a nasty
+ * surprise on the touchline.
+ */
+export function startNextPeriod(state, nowMs) {
   const next = clone(state);
   if (next.clock.period >= next.settings.periods) return next;
+
+  // Bank whatever is still running before the clock resets, or a half that was
+  // never explicitly ended would lose every on-field stint.
+  next.clock.running = false;
+  syncStints(next, now_(next, nowMs));
+
   next.clock.period += 1;
   next.clock.periodElapsedMs = 0;
   next.clock.lastRotationMs = 0;
-  next.clock.running = false;
   next.clock.postponed = false;
   next.pendingRotation = null;
   for (const p of next.players) {
     p.stintStartMs = null;
     p.lastOffMs = null;
+    // "Keep them on" is an instruction about the passage of play in front of
+    // the coach, not a standing order. The break clears it.
+    p.heldOn = false;
   }
+
+  if (next.settings.balanceAtPeriodStart) {
+    const r = roles(next, 0);
+    const byTimeAsc = [...r.field, ...r.bench].sort(
+      (a, b) => playedMs(next, a, 0) - playedMs(next, b, 0)
+    );
+    const fieldCount = effectiveFieldCount(next);
+    rebuild(next, {
+      keeperId: r.keeperId,
+      // Least played start; within the field the most played go off first, so
+      // the queue is already pointing the right way at the first rotation.
+      field: byTimeAsc.slice(0, fieldCount).reverse(),
+      bench: byTimeAsc.slice(fieldCount),
+    });
+  }
+
   logEvent(next, { type: 'PERIOD_START' });
-  return next;
+  return syncStints(next, 0);
+}
+
+/** Keep a player on the field through scheduled rotations, until released. */
+export function toggleHeldOn(state, id, nowMs) {
+  const next = clone(state);
+  const p = getPlayer(next, id);
+  if (!p) return next;
+  p.heldOn = !p.heldOn;
+  logEvent(next, { type: p.heldOn ? 'HOLD_ON' : 'HOLD_RELEASED', note: p.name });
+  return syncStints(next, now_(next, nowMs));
 }
 
 export function setScore(state, team, opponent) {

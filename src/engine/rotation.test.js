@@ -296,10 +296,25 @@ describe('time accounting (§4.5)', () => {
     let s = E.syncStints(game, 0);
     s = E.endPeriod(s, 1_200_000);
     const banked = E.playedMs(s, idOf(s, 'Val'), 0);
+    expect(banked).toBe(1_200_000);
+
     s = E.startNextPeriod(s);
     s.clock.running = true;
     s = E.syncStints(s, 0);
-    expect(E.playedMs(s, idOf(s, 'Val'), 60_000)).toBe(banked + 60_000);
+
+    // Only four players sat out the first half but six start the second, so
+    // two of the first-half XI stay on. Chanel is last in the queue and drops
+    // to the bench: her banked time carries over intact but stops growing.
+    expect(E.playedMs(s, idOf(s, 'Chanel'), 60_000)).toBe(banked);
+    // Harriet sat out the first half, so she starts the second and accrues.
+    expect(E.playedMs(s, idOf(s, 'Harriet'), 60_000)).toBe(60_000);
+  });
+
+  it('banks an unstopped stint when the period rolls over', () => {
+    let s = E.syncStints(game, 0);
+    // No endPeriod call — the coach just taps straight into the second half.
+    s = E.startNextPeriod(s, 1_200_000);
+    expect(E.playedMs(s, idOf(s, 'Val'), 0)).toBe(1_200_000);
   });
 });
 
@@ -379,6 +394,118 @@ describe('fairness advice', () => {
   it('is content when the interval already divides evenly', () => {
     const s = E.createGame(NAMES, { rotationSeconds: 240 });
     expect(E.fairnessAdvice(s).evenlyDivides).toBe(true);
+  });
+});
+
+describe('end of period', () => {
+  // 40 minutes over 2 periods = a 20-minute half.
+  it('stops proposing rotations once the period is over', () => {
+    expect(E.rotationDue(game, 1_500_000)).toBe(false);
+    expect(E.periodOver(game, 1_500_000)).toBe(true);
+  });
+
+  it('stops proposing inside the last three minutes, before the whistle', () => {
+    // 18:00 played, 2:00 left, and a rotation is otherwise due.
+    const s = { ...game, clock: { ...game.clock, lastRotationMs: 780_000 } };
+    expect(E.msUntilRotation(s, 1_080_000)).toBe(0);
+    expect(E.rotationsDone(s, 1_080_000)).toBe(true);
+    expect(E.rotationDue(s, 1_080_000)).toBe(false);
+  });
+
+  it('still rotates with more than the remainder left', () => {
+    const s = { ...game, clock: { ...game.clock, lastRotationMs: 600_000 } };
+    expect(E.rotationsDone(s, 900_000)).toBe(false);
+    expect(E.rotationDue(s, 900_000)).toBe(true);
+  });
+
+  it('the remainder guard can be switched off', () => {
+    const s = E.createGame(NAMES, { minRotationRemainderSeconds: 0 });
+    s.clock.lastRotationMs = 780_000;
+    expect(E.rotationsDone(s, 1_080_000)).toBe(false);
+    expect(E.rotationDue(s, 1_080_000)).toBe(true);
+  });
+
+  it('knows the difference between a period ending and the game ending', () => {
+    expect(E.isFinalPeriod(game)).toBe(false);
+    expect(E.gameOver(game, 1_500_000)).toBe(false);
+    const second = E.startNextPeriod(game);
+    expect(E.isFinalPeriod(second)).toBe(true);
+    expect(E.gameOver(second, 1_500_000)).toBe(true);
+  });
+});
+
+describe('second half re-seeding', () => {
+  it('starts the least-played players', () => {
+    let s = E.syncStints(game, 0);
+    s = E.endPeriod(s, 1_200_000); // keeper + 6 played, 4 sat
+    const second = E.startNextPeriod(s);
+    const r = E.roles(second);
+    // The four who sat out are all on, and the four most-played are benched.
+    expect(names(second, r.field)).toEqual(
+      expect.arrayContaining(['Harriet', 'Leni', 'Claudia', 'Amelia'])
+    );
+    expect(r.bench).toHaveLength(4);
+    const benchTime = r.bench.map((id) => E.playedMs(second, id, 0));
+    const fieldTime = r.field.map((id) => E.playedMs(second, id, 0));
+    expect(Math.min(...benchTime)).toBeGreaterThanOrEqual(Math.max(...fieldTime));
+  });
+
+  it('leaves the keeper in goal — that is a coaching call, not a fairness one', () => {
+    let s = E.syncStints(game, 0);
+    s = E.endPeriod(s, 1_200_000);
+    expect(nameOf(E.startNextPeriod(s), E.roles(E.startNextPeriod(s)).keeperId)).toBe('Dottie');
+  });
+
+  it('can be switched off, leaving the queue exactly as the half ended', () => {
+    let s = E.createGame(NAMES, { balanceAtPeriodStart: false });
+    s.clock.running = true;
+    s = E.endPeriod(E.syncStints(s, 0), 1_200_000);
+    const before = names(s, s.order);
+    expect(names(E.startNextPeriod(s), E.startNextPeriod(s).order)).toEqual(before);
+  });
+});
+
+describe('holding a player on (§5.11)', () => {
+  it('skips them in the next-off group without moving them down the queue', () => {
+    const val = idOf(game, 'Val');
+    const held = E.toggleHeldOn(game, val);
+    const r = E.roles(held);
+    expect(names(held, r.nextOff)).toEqual(['Kora', 'Dylan', 'Pippa']);
+    expect(names(held, r.field)[0]).toBe('Val'); // still first in the queue
+  });
+
+  it('keeps both sides of the swap the same size', () => {
+    let s = E.toggleHeldOn(game, idOf(game, 'Val'));
+    s = E.toggleHeldOn(s, idOf(s, 'Kora'));
+    s = E.toggleHeldOn(s, idOf(s, 'Dylan'));
+    s = E.toggleHeldOn(s, idOf(s, 'Pippa'));
+    const r = E.roles(s);
+    // Only Kit and Chanel are free to come off, so only two can come on.
+    expect(names(s, r.nextOff)).toEqual(['Kit', 'Chanel']);
+    expect(r.nextIn).toHaveLength(2);
+  });
+
+  it('a held player survives a scheduled rotation', () => {
+    const s = E.applyRotation(E.toggleHeldOn(game, idOf(game, 'Val')), 300_000);
+    expect(names(s, E.roles(s).onFieldIds)).toContain('Val');
+  });
+
+  it('releases the hold if they leave the field anyway', () => {
+    let s = E.toggleHeldOn(game, idOf(game, 'Val'));
+    s = E.earlySwap(s, idOf(s, 'Val'), idOf(s, 'Harriet'), 60_000);
+    expect(E.getPlayer(s, idOf(s, 'Val')).heldOn).toBe(false);
+  });
+
+  it('is cleared by the half-time break', () => {
+    const s = E.startNextPeriod(E.toggleHeldOn(game, idOf(game, 'Val')));
+    expect(s.players.every((p) => !p.heldOn)).toBe(true);
+  });
+
+  it('toggles back off', () => {
+    const val = idOf(game, 'Val');
+    const released = E.toggleHeldOn(E.toggleHeldOn(game, val), val);
+    expect(E.getPlayer(released, val).heldOn).toBe(false);
+    expect(names(released, E.roles(released).nextOff)).toEqual(['Val', 'Kora', 'Dylan']);
   });
 });
 

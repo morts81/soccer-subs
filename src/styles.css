@@ -321,6 +321,21 @@ button {
   font-size: 17px;
 }
 
+/* Nothing left to do: reads as finished rather than broken. */
+.clockbtn--spent,
+.clockbtn--spent.clockbtn--due,
+.clockbtn--spent.clockbtn--red {
+  background: none;
+  border-color: var(--line);
+  color: var(--ink-soft);
+  font-size: 17px;
+  animation: none;
+}
+
+.swapbtn:disabled {
+  opacity: 0.35;
+}
+
 @keyframes pulse {
   50% {
     transform: scale(1.035);
@@ -632,6 +647,12 @@ input[type='text'] {
   color: inherit;
 }
 
+/* Reads as part of the sentence rather than a call to action — still tappable. */
+.note button.note__plain {
+  font-weight: inherit;
+  text-decoration: none;
+}
+
 .playerline {
   display: flex;
   align-items: center;
@@ -671,6 +692,11 @@ input[type='text'] {
 .qr {
   display: block;
   width: 100%;
+  /* The canvas carries a 600x600 attribute size. Constraining only the width
+     leaves the height at 600px and stretches the code into a rectangle, which
+     some scanners then refuse. */
+  height: auto;
+  aspect-ratio: 1 / 1;
   max-width: 300px;
   margin: 18px auto;
   border: 10px solid #fff;

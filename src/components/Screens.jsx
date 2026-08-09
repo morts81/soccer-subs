@@ -208,6 +208,19 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           format={(v) => E.formatMs(v * 60000)}
         />
         <Slider
+          label="Stop subbing near the end"
+          value={s.minRotationRemainderSeconds / 60}
+          min={0}
+          max={10}
+          step={1}
+          onChange={(v) => set({ minRotationRemainderSeconds: Math.round(v * 60) })}
+          format={(v) => (v === 0 ? 'Off' : `${v} min left`)}
+        />
+        <div className="note">
+          Below this the half is treated as done and no more subs are offered. Bringing a player
+          on for the last ninety seconds costs the one coming off more than it gives them.
+        </div>
+        <Slider
           label="Total game time"
           value={s.totalGameMinutes}
           min={20}
@@ -225,17 +238,23 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           format={(v) => `${v} × ${E.formatMs((s.totalGameMinutes * 60000) / v)}`}
         />
 
-        {advice && !advice.evenlyDivides && advice.suggestedRotationSeconds && (
+        {advice && !advice.evenlyDivides && (
           <div className="note note--advice">
-            <strong>These settings end mid-rotation.</strong> The queue only comes out even after{' '}
-            {advice.cycle} subs, and this game fits {advice.rotationsInGame}. Some players will
-            finish several minutes ahead of others.{' '}
-            <button
-              onClick={() => set({ rotationSeconds: advice.suggestedRotationSeconds })}
-            >
-              Use {E.formatMs(advice.suggestedRotationSeconds * 1000)} instead
-            </button>{' '}
-            and everyone gets {advice.everyPlayerMinutes} minutes.
+            These settings end mid-rotation.
+            {/* A suggestion under four minutes is no help — it trades an uneven
+                finish for a sub every other attack. Better to say nothing. */}
+            {advice.suggestedRotationSeconds >= 240 && (
+              <>
+                {' '}
+                <button
+                  className="note__plain"
+                  onClick={() => set({ rotationSeconds: advice.suggestedRotationSeconds })}
+                >
+                  Use {E.formatMs(advice.suggestedRotationSeconds * 1000)} instead
+                </button>{' '}
+                and everyone gets {advice.everyPlayerMinutes} minutes.
+              </>
+            )}
           </div>
         )}
         {advice?.evenlyDivides && (
@@ -269,6 +288,15 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           onChange={(v) => set({ keeperTimeCounts: v })}
         />
         <Toggle
+          label="Least played start each period"
+          on={s.balanceAtPeriodStart}
+          onChange={(v) => set({ balanceAtPeriodStart: v })}
+        />
+        <div className="note">
+          A half that stops mid-rotation leaves some players minutes ahead. This re-seeds the
+          queue at the break so the second half corrects it instead of compounding it.
+        </div>
+        <Toggle
           label="Pause the game clock during dialogs"
           on={s.pauseGameClockOnDialog}
           onChange={(v) => set({ pauseGameClockOnDialog: v })}
@@ -277,6 +305,11 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           Off by default so the clock matches the referee's. Turn it on if you're the one keeping
           official time.
         </div>
+        <Toggle
+          label="Ask before pausing the clock"
+          on={s.confirmPauseClock}
+          onChange={(v) => set({ confirmPauseClock: v })}
+        />
 
         <button
           className="btn btn--full"
@@ -397,14 +430,23 @@ export function TransferScreen({ state, teamName, onDone }) {
   const link = buildLink(state, kind, teamName);
 
   useEffect(() => {
-    if (canvas.current) {
-      // High error correction: this gets scanned off a phone screen in sunlight.
-      QRCode.toCanvas(canvas.current, link, {
-        errorCorrectionLevel: 'H',
-        margin: 1,
-        width: 600,
-      }).catch(() => {});
-    }
+    if (!canvas.current) return;
+    // High error correction: this gets scanned off a phone screen in sunlight.
+    QRCode.toCanvas(canvas.current, link, {
+      errorCorrectionLevel: 'H',
+      margin: 1,
+      width: 600,
+    })
+      .then(() => {
+        // The library stamps inline width/height on the canvas, which outranks
+        // the stylesheet: max-width pulled the width down to 300 while the
+        // height stayed at 600 and the code rendered as a rectangle. Dropping
+        // the inline pair hands sizing back to CSS, which keeps it square.
+        if (!canvas.current) return;
+        canvas.current.style.width = '';
+        canvas.current.style.height = '';
+      })
+      .catch(() => {});
   }, [link]);
 
   return (

@@ -65,6 +65,23 @@ A player who comes off early always has zero rest at the moment they hit the ben
 - **Undo restores a full snapshot** rather than inverting the last operation. Simpler and always correct, including after several rapid swaps. The wall clock is the exception — `periodElapsedMs` comes from the current state, not the snapshot, so undoing a swap can't make the displayed game clock jump backwards.
 - **A returning injured player goes to the bench, never straight onto the field.**
 - **"Players swapped each time" defaults to the bench size**, not a fixed number — 6 + keeper on the pitch out of a 9-player squad defaults to swapping 2, the whole bench, each rotation. Touch the slider yourself and the default stops following squad or field-size changes; `subsPerRotationAuto` tracks whether you have.
+- **Subs stop before the half does.** The countdown is a modulo of elapsed time, so left alone it proposes rotations forever — including after full time. `minRotationRemainderSeconds` (3 minutes) is the floor: below it the button reads "No more subs" and the auto-proposal stops. A rotation with ninety seconds left brings someone on for a token stint and takes someone off who never gets back on. The manual ⇄ still works — the guard is about what the app *suggests*, not what the coach is allowed to do.
+- **The clock is not stopped for you at the end of a period.** The referee's watch is the authority and stoppage time is real, so the app shows an "End of period 1" banner with an explicit *Start period 2* rather than deciding the half is over on its own.
+
+## Half time
+
+`startNextPeriod()` re-seeds the queue by playing time: the least-played start the second half, the most-played sit. This is the one place the fairness maths can be corrected for free.
+
+It matters because a half that stops mid-cycle leaves a spread — 8 rotations of a 10-rotation cycle means some players are two stints up. If the same eleven simply walk back out after the break, that gap is locked in and the second half *compounds* the first half's unfairness instead of cancelling it. Re-seeding is what a break is for. `balanceAtPeriodStart` turns it off.
+
+The keeper is deliberately left in goal. Who keeps is a coaching decision, not a fairness one, and silently swapping keepers at half time is a nasty surprise on the touchline.
+
+## Holding a player on or out
+
+Two opposite holds, both on the long-press sheet, both released by the same tap that set them:
+
+- **Keep on** (`heldOn`) skips a player in the next-off group without moving them down the queue, so releasing the hold puts them exactly where they would have been. Holding players on shrinks *both* sides of the swap — hold two of a group of three and only one comes off, so only one comes on, because otherwise the field quietly grows. Cleared automatically if the player leaves the field anyway, and at half time: "keep them on" is about the passage of play in front of the coach, not a standing order.
+- **Take out for the rest of the game** (`unavailable`) freezes their clock and takes them out of the rotation until explicitly brought back — injuries, or a player who has gone home. They return to the bench, never straight onto the field.
 
 ## Storage
 

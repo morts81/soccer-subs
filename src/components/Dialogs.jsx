@@ -77,8 +77,16 @@ export function PlayerSheet({ state, id, nowMs, onClose, onAction }) {
 
   const items = [];
   if (player.unavailable) {
-    items.push(['return', 'Return to the rotation']);
+    items.push(['return', 'Bring back into the rotation']);
   } else {
+    // Both holds live here together: one keeps a player on, one keeps them off,
+    // and each is released by the same tap that set it.
+    if (onField && role !== 'keeper') {
+      items.push([
+        'hold',
+        player.heldOn ? 'Let them rotate again' : 'Keep on — skip the next subs',
+      ]);
+    }
     if (role !== 'keeper' && state.settings.keeperEnabled) {
       items.push(['keeper', onField ? 'Put in goal' : 'Bring on in goal']);
     }
@@ -86,7 +94,7 @@ export function PlayerSheet({ state, id, nowMs, onClose, onAction }) {
       'moveTo',
       onField ? 'Move to the front of the queue' : 'Move to the front of the bench',
     ]);
-    items.push(['unavailable', 'Mark unavailable']);
+    items.push(['unavailable', 'Take out for the rest of the game']);
   }
 
   return (
@@ -97,6 +105,7 @@ export function PlayerSheet({ state, id, nowMs, onClose, onAction }) {
           <div className="sheet__sub">
             {E.formatMs(E.playedMs(state, id, nowMs))} played
             {onField && ` · ${E.formatMs(E.stintMs(state, id, nowMs))} this stint`}
+            {player.heldOn && ' · held on'}
           </div>
         </div>
         {items.map(([action, label]) => (
@@ -170,8 +179,10 @@ export function ReasonSheet({ name, onClose, onChoose }) {
     <Scrim onClose={onClose}>
       <div className="sheet" role="dialog" aria-modal="true">
         <div className="sheet__head">
-          <div className="sheet__title">Why is {name} unavailable?</div>
-          <div className="sheet__sub">They stop accruing time either way.</div>
+          <div className="sheet__title">Why is {name} coming out?</div>
+          <div className="sheet__sub">
+            They stop accruing time either way, and stay out until you bring them back.
+          </div>
         </div>
         {[
           ['injured', 'Injured'],
