@@ -51,7 +51,8 @@ export default function PlayerRow({
     .join(' ');
 
   const played = E.playedMs(state, id, nowMs);
-  const deviation = E.fairnessDeviationMs(state, id, nowMs);
+  const untilChange = E.msUntilPlayerChange(state, id, nowMs);
+  const untilLabel = player.heldOn ? 'Held' : untilChange === null ? '—' : E.formatMs(untilChange);
 
   const label = selected
     ? swap.direction === 'off'
@@ -73,7 +74,9 @@ export default function PlayerRow({
         endHold();
         if (!held.current) onTap?.(id);
       }}
-      aria-label={`${player.name}, ${label}, ${E.formatMs(played)} played`}
+      aria-label={`${player.name}, ${label}, ${E.formatMs(played)} played${
+        untilChange !== null ? `, ${E.formatMs(untilChange)} until next sub` : ''
+      }`}
     >
       <span className="row__main">
         <span className="row__name">{player.name}</span>
@@ -92,10 +95,8 @@ export default function PlayerRow({
       {!isTarget && role === 'nextIn' && <span className="row__arrow arrow--on">→</span>}
 
       <span className="row__times">
-        <span className="row__time">{E.formatMs(played)}</span>
-        {state.settings.showFairnessDeviation && !player.unavailable && (
-          <span className="row__dev">{E.formatSigned(deviation)}</span>
-        )}
+        <span className="row__time">{untilLabel}</span>
+        <span className="row__played">{E.formatMs(played)}</span>
       </span>
     </button>
   );

@@ -27,7 +27,6 @@ export const DEFAULT_SETTINGS = {
   pauseGameClockOnDialog: false,
   confirmPauseClock: true,
   balanceAtPeriodStart: true,
-  showFairnessDeviation: true,
   fairnessMode: 'queue', // 'queue' | 'balanced' (§4.6)
 };
 
@@ -102,10 +101,6 @@ export function meanPlayedMs(state, nowMs) {
   if (!ids.length) return 0;
   return ids.reduce((s, id) => s + playedMs(state, id, nowMs), 0) / ids.length;
 }
-
-/** Signed deviation from squad mean, for the fairness readout (§4.6). */
-export const fairnessDeviationMs = (state, id, nowMs) =>
-  playedMs(state, id, nowMs) - meanPlayedMs(state, nowMs);
 
 // ---------------------------------------------------------------------------
 // Derived roles (§4.3). Never stored. Always recomputed.
@@ -691,21 +686,33 @@ export const isFinalPeriod = (state) => state.clock.period >= state.settings.per
 
 export const gameOver = (state, nowMs) => periodOver(state, nowMs) && isFinalPeriod(state);
 
+export const msUntilRotation = (state, nowMs) =>
+  state.settings.rotationSeconds * 1000 - (now_(state, nowMs) - state.clock.lastRotationMs);
+
 /**
  * Whether this period still has room for another rotation.
  *
- * The countdown is a plain modulo of elapsed time, so left alone it keeps
- * proposing subs long after the half is over — and even before that, a
- * rotation with ninety seconds left brings a player on for a stint too short
- * to be worth the disruption, and takes one off who then never gets back on.
- * `minRotationRemainderSeconds` is the floor below which the answer is simply
- * "that's the half, no more subs".
+ * Checking only the time left *right now* against the remainder floor misses
+ * the case where the next rotation isn't due yet but, once it lands, won't
+ * leave the floor's worth of time behind it — the countdown then keeps
+ * ticking past however much of the period is actually left, which reads as
+ * "sub due in 5:00" next to a period clock reading 4:00. Looking at where the
+ * next rotation would actually land, not just the flat time-remaining
+ * snapshot, is what `minRotationRemainderSeconds` is supposed to guard.
+ *
+ * The forward check only applies before the rotation is due (`until > 0`):
+ * once it's overdue, `left` alone already answers whether it's still worth
+ * firing, and `left - until` swings positive again for a long-overdue
+ * rotation in a period with plenty of time left, which would wrongly say
+ * "done" for a period that very much still has subs to give.
  */
-export const rotationsDone = (state, nowMs) =>
-  msLeftInPeriod(state, nowMs) <= state.settings.minRotationRemainderSeconds * 1000;
-
-export const msUntilRotation = (state, nowMs) =>
-  state.settings.rotationSeconds * 1000 - (now_(state, nowMs) - state.clock.lastRotationMs);
+export const rotationsDone = (state, nowMs) => {
+  const min = state.settings.minRotationRemainderSeconds * 1000;
+  const left = msLeftInPeriod(state, nowMs);
+  if (left <= min) return true;
+  const until = msUntilRotation(state, nowMs);
+  return until > 0 && left - until < min;
+};
 
 export const rotationDue = (state, nowMs) =>
   msUntilRotation(state, nowMs) <= 0 && !rotationsDone(state, nowMs);
@@ -720,6 +727,38 @@ export const inAbsorbWindow = (state, nowMs) => {
   const left = msUntilRotation(state, nowMs);
   return left > 0 && left <= state.settings.absorbWindowSeconds * 1000;
 };
+
+/**
+ * Estimated time until this player is next involved in a scheduled
+ * substitution — off if they're on the field, on if they're on the bench.
+ *
+ * An estimate, not a promise: it projects the queue forward on the
+ * assumption rotations keep firing on schedule for everyone ahead of this
+ * player, which a coach doing an early swap or postponing a rotation is
+ * free to upset before it happens. Good enough to glance at; not a
+ * commitment the app is making.
+ *
+ * Returns null where "time until" doesn't mean anything: the keeper (goes
+ * only by a manual handover), a held player (skipped by the rotation until
+ * released), or once the half has no more subs left to give.
+ */
+export function msUntilPlayerChange(state, id, nowMs) {
+  const p = getPlayer(state, id);
+  if (!p || p.unavailable || p.heldOn || rotationsDone(state, nowMs)) return null;
+
+  const r = roles(state, nowMs);
+  if (id === r.keeperId) return null;
+
+  const swapCount = r.nextOff.length || r.nextIn.length;
+  if (!swapCount) return null;
+
+  const rotatable = r.field.filter((fid) => !getPlayer(state, fid)?.heldOn);
+  const index = rotatable.includes(id) ? rotatable.indexOf(id) : r.bench.indexOf(id);
+  if (index < 0) return null;
+
+  const rotationsAway = Math.floor(index / swapCount);
+  return Math.max(0, msUntilRotation(state, nowMs)) + rotationsAway * state.settings.rotationSeconds * 1000;
+}
 
 export function setClockRunning(state, running, nowMs) {
   const next = clone(state);
@@ -847,5 +886,3 @@ export const formatMs = (ms) => {
   const total = Math.max(0, Math.round(ms / 1000));
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 };
-
-export const formatSigned = (ms) => `${ms < 0 ? '−' : '+'}${formatMs(Math.abs(ms))}`;

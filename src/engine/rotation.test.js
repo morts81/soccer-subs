@@ -213,6 +213,40 @@ describe('Scenario: red and absorb windows (§4.4)', () => {
   });
 });
 
+describe('msUntilPlayerChange', () => {
+  it('gives the base countdown to the next-off and next-in groups', () => {
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Val'), 0)).toBe(300_000);
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Harriet'), 0)).toBe(300_000);
+  });
+
+  it('adds a full rotation interval per group further back in the queue', () => {
+    // Pippa and Chanel are in the second group of three on the field.
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Pippa'), 0)).toBe(600_000);
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Chanel'), 0)).toBe(600_000);
+    // Amelia is the fourth bench player — second group on the bench too.
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Amelia'), 0)).toBe(600_000);
+  });
+
+  it('is null for the keeper — only a manual handover moves them', () => {
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Dottie'), 0)).toBeNull();
+  });
+
+  it('is null for a held player — the rotation skips them', () => {
+    const held = E.toggleHeldOn(game, idOf(game, 'Val'));
+    expect(E.msUntilPlayerChange(held, idOf(held, 'Val'), 0)).toBeNull();
+  });
+
+  it('is null for an unavailable player', () => {
+    const s = E.markUnavailable(game, idOf(game, 'Val'), 'injured', 0);
+    expect(E.msUntilPlayerChange(s, idOf(s, 'Val'), 0)).toBeNull();
+  });
+
+  it('is null once the half has no more subs left to give', () => {
+    // 18 minutes in, 2 minutes left in a 20-minute half — under the 3-minute floor.
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Val'), 1_080_000)).toBeNull();
+  });
+});
+
 describe('Scenario: Keeper off early (§5.1)', () => {
   it('bench player straight into goal keeps the field count', () => {
     const before = E.roles(game).field.length;
@@ -493,6 +527,35 @@ describe('end of period', () => {
     const second = E.startNextPeriod(game);
     expect(E.isFinalPeriod(second)).toBe(true);
     expect(E.gameOver(second, 1_500_000)).toBe(true);
+  });
+
+  // The reported bug: the countdown read higher than the period clock late in
+  // the half. A rotation that just happened at 16:00 puts the next one 5:00
+  // away, but only 4:00 is left in a 20-minute half — so the sub the
+  // countdown is promising can never actually happen.
+  it('is done once the next rotation would land after the period could still spare it', () => {
+    const s = { ...game, clock: { ...game.clock, lastRotationMs: 960_000 } };
+    expect(E.msLeftInPeriod(s, 960_000)).toBe(240_000); // 4:00 left
+    expect(E.msUntilRotation(s, 960_000)).toBe(300_000); // countdown reads 5:00
+    expect(E.rotationsDone(s, 960_000)).toBe(true);
+    expect(E.rotationDue(s, 960_000)).toBe(false);
+  });
+
+  it('does not fire early for a rotation that would still land with room to spare', () => {
+    // 10:00 left, next rotation 5:00 away — 5:00 to spare afterwards, well
+    // clear of the 3:00 floor.
+    const s = { ...game, clock: { ...game.clock, lastRotationMs: 600_000 } };
+    expect(E.msLeftInPeriod(s, 600_000)).toBe(600_000);
+    expect(E.msUntilRotation(s, 600_000)).toBe(300_000);
+    expect(E.rotationsDone(s, 600_000)).toBe(false);
+  });
+
+  it('a long-overdue rotation is not wrongly marked done just because it is overdue', () => {
+    // Rotation happened at 0, interval is 5:00, so at 10:00 elapsed it is 5
+    // minutes overdue — but the 20-minute half still has 10 minutes left.
+    expect(E.msUntilRotation(game, 600_000)).toBe(-300_000);
+    expect(E.rotationsDone(game, 600_000)).toBe(false);
+    expect(E.rotationDue(game, 600_000)).toBe(true);
   });
 });
 

@@ -242,13 +242,13 @@ button {
   font-weight: 600;
 }
 
-.row__dev {
+.row__played {
   display: block;
   font-size: 11px;
   color: var(--ink-soft);
   margin-top: 1px;
 }
-.row--selected .row__dev {
+.row--selected .row__played {
   color: rgba(255, 255, 255, 0.7);
 }
 

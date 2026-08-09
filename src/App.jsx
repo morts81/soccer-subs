@@ -121,9 +121,10 @@ export default function App() {
 
   const targets = useMemo(() => {
     if (!game || !swap) return [];
-    return swap.direction === 'off'
-      ? roles.bench
-      : roles.onFieldIds.filter((id) => id !== roles.keeperId || game.settings.keeperEnabled);
+    // The keeper never appears as an ordinary swap target — bringing someone
+    // on for them is a three-way move handled by the dedicated keeper sheet
+    // (§5.1), not this two-tap flow.
+    return swap.direction === 'off' ? roles.bench : roles.onFieldIds.filter((id) => id !== roles.keeperId);
   }, [game, swap, roles]);
 
   const leastTimeId = useMemo(
@@ -140,8 +141,13 @@ export default function App() {
     if (onField && roles.bench.length === 0) {
       return flash('Nobody on the bench to bring on.');
     }
-    // §4.4 — intervene before the coach commits, not after.
-    if (E.inRedWindow(game, nowMs)) {
+    // §4.4 — intervene before the coach commits, not after. Once a rotation
+    // is actually due (not just close), inRedWindow alone stops catching it —
+    // it turns off at zero, right when starting a swap now guarantees the
+    // full rotation dialog will land the instant this one closes. Warn there
+    // too, or the coach gets blindsided by a second dialog for players they
+    // didn't touch.
+    if (E.inRedWindow(game, nowMs) || E.rotationDue(game, nowMs)) {
       setRedWarning(id);
       return undefined;
     }
@@ -343,7 +349,7 @@ export default function App() {
 
       {redWarning && (
         <div className="banner warn">
-          <span>Scheduled subs in {E.formatMs(untilRotation)}</span>
+          <span>{due ? 'Scheduled subs are due' : `Scheduled subs in ${E.formatMs(untilRotation)}`}</span>
           <button
             onClick={() => {
               const id = redWarning;

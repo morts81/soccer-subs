@@ -6,8 +6,14 @@ import { isIOS, isStandalone } from '../engine/persistence.js';
 
 /* ---- setup -------------------------------------------------------------- */
 
+// Seeded so the squad doesn't need retyping every time the app is reset for
+// testing. Also just this team's actual roster.
+const DEFAULT_SQUAD = [
+  'Dylan', 'Kit', 'Pippa', 'Chanel', 'Dottie', 'Val', 'Leni', 'Harriet', 'Kora', 'Claudia', 'Amelia',
+];
+
 export function SetupScreen({ savedTeam, onStart, onRestore, error }) {
-  const [names, setNames] = useState(savedTeam?.names ?? []);
+  const [names, setNames] = useState(savedTeam?.names ?? DEFAULT_SQUAD);
   const [teamName, setTeamName] = useState(savedTeam?.name ?? '');
   const [draft, setDraft] = useState('');
   const [editingIndex, setEditingIndex] = useState(null);
@@ -277,11 +283,6 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           Stops a player who came off early being sent straight back on at the next scheduled
           sub.
         </div>
-        <Toggle
-          label="Show time above or below average"
-          on={s.showFairnessDeviation}
-          onChange={(v) => set({ showFairnessDeviation: v })}
-        />
         <Toggle
           label="Keeper minutes count as playing time"
           on={s.keeperTimeCounts}
