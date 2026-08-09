@@ -5,7 +5,7 @@ Fair substitutions and playing time for junior soccer. Offline-first React PWA, 
 ```bash
 npm install
 npm run dev      # local
-npm test         # 31 engine tests
+npm test         # 63 engine tests
 npm run build    # → dist/
 ```
 
@@ -21,8 +21,13 @@ Deploy: import the repo into Vercel, framework preset **Vite**, build `npm run b
 | `src/engine/persistence.js` | localStorage with honest failure, plus the iOS install checks. |
 | `src/hooks/useGameClock.js` | Timestamp-based clock and wake lock. |
 | `src/components/` | UI only. No rotation logic lives here. |
+| `scripts/gen-icons.mjs` | Regenerates `public/icon-*.png` from `design/club-icon-source.png`. |
 
 `rotation.js` has no imports. If you'd rather keep your existing prototype UI, lift that one file and the tests — everything else is replaceable.
+
+## Icons
+
+The source artwork lives at `design/club-icon-source.png` (gitignored — it's the club's asset, not shipped, and at ~1.3MB not worth the repo weight). `npm install --no-save sharp && node scripts/gen-icons.mjs && npm uninstall sharp` regenerates every size from it: full-bleed square icons for `any`, plus a separate padded `maskable` icon so Android's circular crop doesn't clip the dragon's horns or the arrow tips. sharp is deliberately not a project dependency — it's a heavy native binary needed only for this occasional task.
 
 ## How the rotation works
 
