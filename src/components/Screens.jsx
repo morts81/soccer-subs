@@ -12,18 +12,47 @@ const DEFAULT_SQUAD = [
   'Dylan', 'Kit', 'Pippa', 'Chanel', 'Dottie', 'Val', 'Leni', 'Harriet', 'Kora', 'Claudia', 'Amelia',
 ];
 
-export function SetupScreen({ savedTeam, onStart, onRestore, error }) {
+/** Fisher–Yates, in place — for shuffling a fresh starting lineup. */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * The saved squad is the whole club roster and outlives any one game — not
+ * everyone on it shows up every week. This screen splits the two: names are
+ * added/edited/removed here permanently, but who's actually playing today is
+ * a separate per-name checkbox that defaults to everyone, so a coach missing
+ * two of eleven just unchecks them rather than deleting them from the squad.
+ *
+ * Doubles as both the very first "who's on the team" setup and, via
+ * `onCancel`, the "start a new game" flow reached from Settings mid-season —
+ * same screen, same roster, just with a way back out when there's a live
+ * game underneath it.
+ */
+export function LineupScreen({ savedTeam, onStart, onRestore, onCancel, error }) {
   const [names, setNames] = useState(savedTeam?.names ?? DEFAULT_SQUAD);
+  const [playing, setPlaying] = useState(() => names.map(() => true));
   const [teamName, setTeamName] = useState(savedTeam?.name ?? '');
   const [draft, setDraft] = useState('');
   const [editingIndex, setEditingIndex] = useState(null);
   const [editDraft, setEditDraft] = useState('');
+  const [randomizeLineup, setRandomizeLineup] = useState(false);
 
   const add = () => {
     const clean = draft.trim();
     if (!clean) return;
-    setNames([...names, clean]);
+    setNames((prev) => [...prev, clean]);
+    setPlaying((prev) => [...prev, true]);
     setDraft('');
+  };
+
+  const remove = (i) => {
+    setNames((prev) => prev.filter((_, j) => j !== i));
+    setPlaying((prev) => prev.filter((_, j) => j !== i));
   };
 
   const startEdit = (i) => {
@@ -37,13 +66,21 @@ export function SetupScreen({ savedTeam, onStart, onRestore, error }) {
     setEditingIndex(null);
   };
 
+  const playingCount = playing.filter(Boolean).length;
+
+  const start = () => {
+    const playingNames = names.filter((_, i) => playing[i]);
+    onStart(randomizeLineup ? shuffle([...playingNames]) : playingNames, teamName, names);
+  };
+
   return (
     <div className="app">
       <div className="screen">
-        <h1>Who's playing?</h1>
+        <h1>Team lineup</h1>
         <p className="lede">
-          Add everyone in the squad. The order doesn't matter — you can shuffle the queue once
-          the game starts.
+          {onCancel
+            ? "Everyone's checked by default — untick anyone who isn't here today."
+            : "Add everyone in the squad, then untick anyone who isn't playing today."}
         </p>
 
         {error && <div className="note note--warn">{error}</div>}
@@ -90,17 +127,23 @@ export function SetupScreen({ savedTeam, onStart, onRestore, error }) {
                 />
               </div>
             ) : (
-              <div className="playerline" key={i}>
+              <div className={`playerline${playing[i] ? '' : ' playerline--out'}`} key={i}>
+                <button
+                  type="button"
+                  className="playerline__check"
+                  data-checked={playing[i]}
+                  aria-label={playing[i] ? `${n} is playing today` : `${n} is not playing today`}
+                  onClick={() => setPlaying((prev) => prev.map((p, j) => (j === i ? !p : p)))}
+                >
+                  {playing[i] ? '✓' : ''}
+                </button>
                 <button className="playerline__name" onClick={() => startEdit(i)}>
                   {n}
                 </button>
                 <button className="playerline__edit-btn" onClick={() => startEdit(i)}>
                   Edit
                 </button>
-                <button
-                  className="playerline__remove"
-                  onClick={() => setNames(names.filter((_, j) => j !== i))}
-                >
+                <button className="playerline__remove" onClick={() => remove(i)}>
                   Remove
                 </button>
               </div>
@@ -116,19 +159,39 @@ export function SetupScreen({ savedTeam, onStart, onRestore, error }) {
           </div>
         )}
 
+        {!onCancel && (
+          <div className="note">
+            Got a link from your coach? <button onClick={onRestore}>Open it here</button> to load
+            the squad.
+          </div>
+        )}
+
+        <Toggle
+          label="Randomise the lineup"
+          on={randomizeLineup}
+          onChange={setRandomizeLineup}
+        />
         <div className="note">
-          Got a link from your coach? <button onClick={onRestore}>Open it here</button> to load
-          the squad.
+          Shuffles who starts as keeper, on the field and on the bench, instead of keeping the
+          order above.
         </div>
+
+        {onCancel && (
+          <div className="note note--warn">
+            Starting resets the clock and every player's time — today's game will begin from
+            scratch.
+          </div>
+        )}
       </div>
 
       <div className="footer">
-        <button
-          className="btn btn--primary"
-          disabled={names.length < 2}
-          onClick={() => onStart(names, teamName)}
-        >
-          {names.length < 2 ? 'Add at least two players' : `Start with ${names.length} players`}
+        {onCancel && (
+          <button className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+        <button className="btn btn--primary" disabled={playingCount < 2} onClick={start}>
+          {playingCount < 2 ? 'Pick at least two players' : `Start a new game (${playingCount})`}
         </button>
       </div>
     </div>
@@ -165,8 +228,7 @@ function Toggle({ label, on, onChange }) {
   );
 }
 
-export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }) {
-  const [randomizeLineup, setRandomizeLineup] = useState(false);
+export function SettingsScreen({ state, onChange, onDone, onPlayers, onLineup, onTransfer }) {
   const s = state.settings;
   const set = (patch) => onChange({ ...s, ...patch });
   // fieldPlayers/keeperEnabled change the bench size, so re-derive
@@ -315,21 +377,15 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           onChange={(v) => set({ confirmPauseClock: v })}
         />
 
-        <Toggle
-          label="Randomise the lineup"
-          on={randomizeLineup}
-          onChange={setRandomizeLineup}
-        />
-        <div className="note">
-          Shuffles who starts as keeper, on the field and on the bench, instead of keeping
-          tonight's starting lineup.
-        </div>
+        <button className="btn btn--full" style={{ marginTop: 20 }} onClick={onTransfer}>
+          Hand over to another phone
+        </button>
         <button
           className="btn btn--full"
-          style={{ marginTop: 20, color: 'var(--off)', borderColor: 'var(--off)' }}
-          onClick={() => onNewGame(randomizeLineup)}
+          style={{ marginTop: 10, color: 'var(--off)', borderColor: 'var(--off)' }}
+          onClick={onLineup}
         >
-          Reset timers and start a new game
+          Team lineup — start a new game
         </button>
       </div>
 

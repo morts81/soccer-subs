@@ -16,20 +16,11 @@ import {
   Toast,
 } from './components/Dialogs.jsx';
 import {
+  LineupScreen,
   PlayersScreen,
   SettingsScreen,
-  SetupScreen,
   TransferScreen,
 } from './components/Screens.jsx';
-
-/** Fisher–Yates, in place — for shuffling a fresh starting lineup. */
-function shuffle(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
 
 export default function App() {
   const [game, setGame] = useState(null);
@@ -222,15 +213,45 @@ export default function App() {
   if (!game) {
     return (
       <>
-        <SetupScreen
+        <LineupScreen
           savedTeam={store.loadTeam()}
           error={setupError}
           onRestore={() => setSetupError('Open the link your coach sent and it will load here.')}
-          onStart={(names, name) => {
-            store.saveTeam({ name, names });
+          onStart={(playingNames, name, fullRoster) => {
+            store.saveTeam({ name, names: fullRoster });
             setTeamName(name);
-            const subsPerRotation = E.defaultSubsPerRotation(names.length, E.DEFAULT_SETTINGS);
-            setGame(E.createGame(names, { subsPerRotation }));
+            const subsPerRotation = E.defaultSubsPerRotation(playingNames.length, E.DEFAULT_SETTINGS);
+            setGame(E.createGame(playingNames, { subsPerRotation }));
+            setScreen('game');
+          }}
+        />
+        {updateBanner}
+      </>
+    );
+  }
+
+  if (screen === 'lineup') {
+    // The full squad, not just whoever's in today's game — someone who sat
+    // out this week (or the last one, before this device was reset) still
+    // needs to show up here to be checked back in, and mid-game additions
+    // that never made it into the saved team shouldn't vanish either.
+    const fullSquad = [
+      ...new Set([...(store.loadTeam()?.names ?? []), ...game.players.map((p) => p.name)]),
+    ];
+    return (
+      <>
+        <LineupScreen
+          savedTeam={{ name: teamName, names: fullSquad }}
+          onCancel={() => setScreen('settings')}
+          onStart={(playingNames, name, fullRoster) => {
+            store.saveTeam({ name, names: fullRoster });
+            store.clearGame();
+            setTeamName(name);
+            const settings = game.settings.subsPerRotationAuto
+              ? { ...game.settings, subsPerRotation: E.defaultSubsPerRotation(playingNames.length, game.settings) }
+              : game.settings;
+            setGame(E.createGame(playingNames, settings));
+            setScreen('game');
           }}
         />
         {updateBanner}
@@ -246,16 +267,8 @@ export default function App() {
           onChange={(settings) => setGame({ ...game, settings })}
           onPlayers={() => setScreen('players')}
           onDone={() => setScreen('game')}
-          onNewGame={(randomizeLineup) => {
-            store.clearGame();
-            const names = game.players.map((p) => p.name);
-            if (randomizeLineup) shuffle(names);
-            const settings = game.settings.subsPerRotationAuto
-              ? { ...game.settings, subsPerRotation: E.defaultSubsPerRotation(names.length, game.settings) }
-              : game.settings;
-            setGame(E.createGame(names, settings));
-            setScreen('game');
-          }}
+          onLineup={() => setScreen('lineup')}
+          onTransfer={() => { commit(game, nowMs); setScreen('transfer'); }}
         />
         {updateBanner}
       </>
@@ -332,9 +345,6 @@ export default function App() {
         </button>
         <button className="score" onClick={() => setShowScore(true)}>
           {game.score[0]} – {game.score[1]}
-        </button>
-        <button onClick={() => { commit(game, nowMs); setScreen('transfer'); }} aria-label="Hand over to another phone">
-          ⇪
         </button>
         <button
           onClick={() => setConfirmUndo(true)}
