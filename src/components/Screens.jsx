@@ -166,6 +166,7 @@ function Toggle({ label, on, onChange }) {
 }
 
 export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }) {
+  const [randomizeLineup, setRandomizeLineup] = useState(false);
   const s = state.settings;
   const set = (patch) => onChange({ ...s, ...patch });
   // fieldPlayers/keeperEnabled change the bench size, so re-derive
@@ -235,14 +236,16 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           onChange={(v) => set({ totalGameMinutes: v })}
           format={(v) => `${v} min`}
         />
-        <Slider
-          label="Periods"
-          value={s.periods}
-          min={1}
-          max={4}
-          onChange={(v) => set({ periods: v })}
-          format={(v) => `${v} × ${E.formatMs((s.totalGameMinutes * 60000) / v)}`}
+        <Toggle
+          label="Play in two halves"
+          on={s.periods === 2}
+          onChange={(v) => set({ periods: v ? 2 : 1 })}
         />
+        <div className="note">
+          {s.periods === 2
+            ? `Two ${E.formatMs((s.totalGameMinutes * 60000) / 2)} halves, with a break at half time to re-seed the queue.`
+            : `One continuous ${E.formatMs(s.totalGameMinutes * 60000)} period — no half-time break.`}
+        </div>
 
         {advice && !advice.evenlyDivides && (
           <div className="note note--advice">
@@ -289,7 +292,7 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           onChange={(v) => set({ keeperTimeCounts: v })}
         />
         <Toggle
-          label="Least played start each period"
+          label="Least played start each half"
           on={s.balanceAtPeriodStart}
           onChange={(v) => set({ balanceAtPeriodStart: v })}
         />
@@ -312,10 +315,19 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onNewGame }
           onChange={(v) => set({ confirmPauseClock: v })}
         />
 
+        <Toggle
+          label="Randomise the lineup"
+          on={randomizeLineup}
+          onChange={setRandomizeLineup}
+        />
+        <div className="note">
+          Shuffles who starts as keeper, on the field and on the bench, instead of keeping
+          tonight's starting lineup.
+        </div>
         <button
           className="btn btn--full"
           style={{ marginTop: 20, color: 'var(--off)', borderColor: 'var(--off)' }}
-          onClick={onNewGame}
+          onClick={() => onNewGame(randomizeLineup)}
         >
           Reset timers and start a new game
         </button>

@@ -729,35 +729,24 @@ export const inAbsorbWindow = (state, nowMs) => {
 };
 
 /**
- * Estimated time until this player is next involved in a scheduled
- * substitution — off if they're on the field, on if they're on the bench.
+ * Time until this player is next involved in a scheduled substitution — off
+ * if they're on the field, on if they're on the bench.
  *
- * An estimate, not a promise: it projects the queue forward on the
- * assumption rotations keep firing on schedule for everyone ahead of this
- * player, which a coach doing an early swap or postponing a rotation is
- * free to upset before it happens. Good enough to glance at; not a
- * commitment the app is making.
- *
- * Returns null where "time until" doesn't mean anything: the keeper (goes
- * only by a manual handover), a held player (skipped by the rotation until
- * released), or once the half has no more subs left to give.
+ * Only defined for `nextOff`/`nextIn` — the players actually up next. Anyone
+ * further back in the queue doesn't have a meaningful "time until" yet: which
+ * rotation they land in depends on choices between now and then (an early
+ * swap, a hold, a postponed rotation) that haven't happened, so projecting a
+ * number for them would just be a guess dressed up as a countdown.
  */
 export function msUntilPlayerChange(state, id, nowMs) {
+  if (rotationsDone(state, nowMs)) return null;
   const p = getPlayer(state, id);
-  if (!p || p.unavailable || p.heldOn || rotationsDone(state, nowMs)) return null;
+  if (!p || p.unavailable || p.heldOn) return null;
 
   const r = roles(state, nowMs);
-  if (id === r.keeperId) return null;
+  if (!r.nextOff.includes(id) && !r.nextIn.includes(id)) return null;
 
-  const swapCount = r.nextOff.length || r.nextIn.length;
-  if (!swapCount) return null;
-
-  const rotatable = r.field.filter((fid) => !getPlayer(state, fid)?.heldOn);
-  const index = rotatable.includes(id) ? rotatable.indexOf(id) : r.bench.indexOf(id);
-  if (index < 0) return null;
-
-  const rotationsAway = Math.floor(index / swapCount);
-  return Math.max(0, msUntilRotation(state, nowMs)) + rotationsAway * state.settings.rotationSeconds * 1000;
+  return Math.max(0, msUntilRotation(state, nowMs));
 }
 
 export function setClockRunning(state, running, nowMs) {

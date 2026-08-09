@@ -22,6 +22,15 @@ import {
   TransferScreen,
 } from './components/Screens.jsx';
 
+/** Fisher–Yates, in place — for shuffling a fresh starting lineup. */
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 export default function App() {
   const [game, setGame] = useState(null);
   const [teamName, setTeamName] = useState('');
@@ -237,9 +246,10 @@ export default function App() {
           onChange={(settings) => setGame({ ...game, settings })}
           onPlayers={() => setScreen('players')}
           onDone={() => setScreen('game')}
-          onNewGame={() => {
+          onNewGame={(randomizeLineup) => {
             store.clearGame();
             const names = game.players.map((p) => p.name);
+            if (randomizeLineup) shuffle(names);
             const settings = game.settings.subsPerRotationAuto
               ? { ...game.settings, subsPerRotation: E.defaultSubsPerRotation(names.length, game.settings) }
               : game.settings;
@@ -292,7 +302,7 @@ export default function App() {
 
   const subLabel = noMoreSubs
     ? overPeriod
-      ? finalPeriod ? 'Game over' : 'Period over'
+      ? finalPeriod ? 'Game over' : 'Half over'
       : 'No more subs'
     : !canSub
     ? 'No subs available'
@@ -336,7 +346,7 @@ export default function App() {
       </div>
 
       <div className="periodbar">
-        Period {game.clock.period}/{game.settings.periods}
+        {game.settings.periods === 2 ? `Half ${game.clock.period}/2` : 'Full game'}
         {game.pendingRotation ? ' · subs waiting' : ''}
       </div>
 
@@ -369,7 +379,7 @@ export default function App() {
           <span>
             {finalPeriod
               ? `Full time · ${game.score[0]}–${game.score[1]}`
-              : `End of period ${game.clock.period}`}
+              : `End of the first half`}
           </span>
           {!finalPeriod && (
             // Not commit() — startNextPeriod resets periodElapsedMs to zero and
@@ -377,10 +387,10 @@ export default function App() {
             <button
               onClick={() => {
                 setGame(E.startNextPeriod(game, nowMs));
-                setLastActionLabel(`Period ${game.clock.period + 1} started`);
+                setLastActionLabel('Second half started');
               }}
             >
-              Start period {game.clock.period + 1}
+              Start second half
             </button>
           )}
         </div>

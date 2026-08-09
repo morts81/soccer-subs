@@ -219,12 +219,11 @@ describe('msUntilPlayerChange', () => {
     expect(E.msUntilPlayerChange(game, idOf(game, 'Harriet'), 0)).toBe(300_000);
   });
 
-  it('adds a full rotation interval per group further back in the queue', () => {
-    // Pippa and Chanel are in the second group of three on the field.
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Pippa'), 0)).toBe(600_000);
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Chanel'), 0)).toBe(600_000);
-    // Amelia is the fourth bench player — second group on the bench too.
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Amelia'), 0)).toBe(600_000);
+  it('is null for players further back in the queue than next off/in', () => {
+    // Pippa is on the field but not in the next-off group of three.
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Pippa'), 0)).toBeNull();
+    // Amelia is on the bench but not in the next-in group of three.
+    expect(E.msUntilPlayerChange(game, idOf(game, 'Amelia'), 0)).toBeNull();
   });
 
   it('is null for the keeper — only a manual handover moves them', () => {
