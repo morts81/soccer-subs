@@ -213,39 +213,6 @@ describe('Scenario: red and absorb windows (§4.4)', () => {
   });
 });
 
-describe('msUntilPlayerChange', () => {
-  it('gives the base countdown to the next-off and next-in groups', () => {
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Val'), 0)).toBe(300_000);
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Harriet'), 0)).toBe(300_000);
-  });
-
-  it('is null for players further back in the queue than next off/in', () => {
-    // Pippa is on the field but not in the next-off group of three.
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Pippa'), 0)).toBeNull();
-    // Amelia is on the bench but not in the next-in group of three.
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Amelia'), 0)).toBeNull();
-  });
-
-  it('is null for the keeper — only a manual handover moves them', () => {
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Dottie'), 0)).toBeNull();
-  });
-
-  it('is null for a held player — the rotation skips them', () => {
-    const held = E.toggleHeldOn(game, idOf(game, 'Val'));
-    expect(E.msUntilPlayerChange(held, idOf(held, 'Val'), 0)).toBeNull();
-  });
-
-  it('is null for an unavailable player', () => {
-    const s = E.markUnavailable(game, idOf(game, 'Val'), 'injured', 0);
-    expect(E.msUntilPlayerChange(s, idOf(s, 'Val'), 0)).toBeNull();
-  });
-
-  it('is null once the half has no more subs left to give', () => {
-    // 18 minutes in, 2 minutes left in a 20-minute half — under the 3-minute floor.
-    expect(E.msUntilPlayerChange(game, idOf(game, 'Val'), 1_080_000)).toBeNull();
-  });
-});
-
 describe('Scenario: Keeper off early (§5.1)', () => {
   it('bench player straight into goal keeps the field count', () => {
     const before = E.roles(game).field.length;

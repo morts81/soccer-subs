@@ -728,27 +728,6 @@ export const inAbsorbWindow = (state, nowMs) => {
   return left > 0 && left <= state.settings.absorbWindowSeconds * 1000;
 };
 
-/**
- * Time until this player is next involved in a scheduled substitution — off
- * if they're on the field, on if they're on the bench.
- *
- * Only defined for `nextOff`/`nextIn` — the players actually up next. Anyone
- * further back in the queue doesn't have a meaningful "time until" yet: which
- * rotation they land in depends on choices between now and then (an early
- * swap, a hold, a postponed rotation) that haven't happened, so projecting a
- * number for them would just be a guess dressed up as a countdown.
- */
-export function msUntilPlayerChange(state, id, nowMs) {
-  if (rotationsDone(state, nowMs)) return null;
-  const p = getPlayer(state, id);
-  if (!p || p.unavailable || p.heldOn) return null;
-
-  const r = roles(state, nowMs);
-  if (!r.nextOff.includes(id) && !r.nextIn.includes(id)) return null;
-
-  return Math.max(0, msUntilRotation(state, nowMs));
-}
-
 export function setClockRunning(state, running, nowMs) {
   const next = clone(state);
   next.clock.running = running;
