@@ -100,12 +100,29 @@ export default function App() {
     !(game?.settings.pauseGameClockOnDialog && modalOpen);
 
   // §5.10 — the game doesn't stop because the coach is looking at their phone.
-  const nowMs = useGameClock(clockRunning, game?.clock.periodElapsedMs ?? 0);
+  // Capped at the period length so nothing — the period clock, playing time,
+  // the stint timers — reads past the whistle, even for the moment between
+  // the clock crossing zero and the auto-stop below landing (or after the
+  // phone wakes from a pocket well past the end of the half).
+  const rawNowMs = useGameClock(clockRunning, game?.clock.periodElapsedMs ?? 0);
+  const periodEndMs = game ? E.periodLengthMs(game) : Infinity;
+  const nowMs = Math.min(rawNowMs, periodEndMs);
   useWakeLock(Boolean(game?.clock.running));
 
   const commit = useCallback((next, ms) => {
     setGame({ ...next, clock: { ...next.clock, periodElapsedMs: ms } });
   }, []);
+
+  /* ---- half time / full time ------------------------------------------- */
+
+  // The clock stops itself at the end of each period. Left running, playing
+  // time kept accruing for everyone on the field through the break, which
+  // skewed the second-half re-seed and the final totals.
+  useEffect(() => {
+    if (!game?.clock.running || !E.periodOver(game, nowMs)) return;
+    commit(E.endPeriod(game, periodEndMs), periodEndMs);
+    navigator.vibrate?.([200, 100, 200]);
+  }, [game, nowMs, periodEndMs, commit]);
 
   /* ---- rotation firing (§5.9) ------------------------------------------ */
 
@@ -336,6 +353,8 @@ export default function App() {
     : E.formatMs(untilRotation);
 
   const toggleClock = () => {
+    // Nothing left to time — the banner's "Start second half" is the way on.
+    if (overPeriod && !game.clock.running) return;
     if (game.clock.running && game.settings.confirmPauseClock) {
       setConfirmPause(true);
       return;
@@ -454,8 +473,12 @@ export default function App() {
           ⇄
         </button>
 
-        <button className="clockbtn" onClick={toggleClock}>
-          {E.formatMs(periodLeft)} {game.clock.running ? '⏸' : '▶'}
+        <button
+          className={`clockbtn${overPeriod ? ' clockbtn--spent' : ''}`}
+          onClick={toggleClock}
+          disabled={overPeriod && !game.clock.running}
+        >
+          {E.formatMs(periodLeft)} {overPeriod ? '' : game.clock.running ? '⏸' : '▶'}
         </button>
       </div>
 

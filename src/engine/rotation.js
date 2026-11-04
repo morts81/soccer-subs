@@ -369,9 +369,26 @@ export function applyRotation(state, nowMs) {
   // boundary. Sorting here instead — even "correctly", by time — trades that
   // guarantee for a slightly better mid-cycle spread, and a full cycle is the
   // target the settings advice steers the coach onto.
+  //
+  // The one exception is an incoming player who has already played more than
+  // everyone they're joining — in practice a former keeper, whose minutes in
+  // goal count but who sat at the back of the bench by time and only came on
+  // because the bench ran dry. Appending them would leave the most-played
+  // player on the pitch for the next several rotations. They go to the front
+  // of the next-off group instead. A pure circular queue never produces this
+  // case, so its cycle-boundary guarantee is untouched.
+  const staying = r.field.filter((id) => !off.includes(id));
+  // (Nobody staying — the whole field rotating at once — means nobody to be
+  // out of line with, so that case appends as normal.)
+  const most = staying.length ? Math.max(...staying.map((id) => playedMs(next, id, t))) : Infinity;
+  const overplayed = on.filter((id) => playedMs(next, id, t) > most);
   rebuild(next, {
     keeperId: r.keeperId,
-    field: [...r.field.filter((id) => !off.includes(id)), ...on],
+    field: [
+      ...[...overplayed].sort((a, b) => playedMs(next, b, t) - playedMs(next, a, t)),
+      ...staying,
+      ...on.filter((id) => !overplayed.includes(id)),
+    ],
     bench,
   });
 
@@ -488,9 +505,14 @@ export function swapKeeperWithField(state, fieldId, nowMs) {
   if (!r.field.includes(fieldId)) return earlySwap(state, r.keeperId, fieldId, t);
 
   pushUndo(next);
+  // The outgoing keeper slots into the field queue by playing time rather than
+  // inheriting the new keeper's place. Their minutes in goal count, so a keeper
+  // who has played the most comes out to the front of the next-off group —
+  // taking the new keeper's slot could park them at the back of the queue for
+  // the rest of the half while everyone else rotated around them.
   rebuild(next, {
     keeperId: fieldId,
-    field: r.field.map((id) => (id === fieldId ? r.keeperId : id)),
+    field: placeOnField(next, r.field.filter((id) => id !== fieldId), r.keeperId, t),
     bench: r.bench,
   });
   logEvent(next, { type: 'KEEPER_CHANGE', off: [r.keeperId], on: [fieldId] });
@@ -739,6 +761,9 @@ export function endPeriod(state, nowMs) {
   const next = clone(state);
   const t = now_(next, nowMs);
   next.clock.running = false;
+  next.clock.periodElapsedMs = t;
+  // A rotation proposed in the dying seconds has nothing left to run against.
+  next.pendingRotation = null;
   syncStints(next, t);
   logEvent(next, { type: 'PERIOD_END' });
   return next;

@@ -255,6 +255,45 @@ describe('Scenario: Keeper off early (§5.1)', () => {
     expect(after.order).toHaveLength(after.players.length);
   });
 
+  // The reported bug: first-half keeper swapped out to the field in the second
+  // half, most-played player on the pitch, and never came off.
+  it('a keeper swapped out to the field joins the next-off group by playing time', () => {
+    let s = E.syncStints(game, 0);
+    for (const t of [300_000, 600_000, 900_000]) s = E.applyRotation(s, t);
+    s = E.endPeriod(s, 1_200_000);
+    s = E.startNextPeriod(s);
+    s.clock.running = true;
+    s = E.syncStints(s, 0);
+    const r0 = E.roles(s, 0);
+    // The new keeper is whoever the re-seed put at the back of the field.
+    const newKeeper = r0.field[r0.field.length - 1];
+    s = E.swapKeeperWithField(s, newKeeper, 0);
+    const r = E.roles(s, 0);
+    expect(r.keeperId).toBe(newKeeper);
+    expect(r.field[0]).toBe(idOf(s, 'Dottie'));
+    expect(r.nextOff).toContain(idOf(s, 'Dottie'));
+  });
+
+  it('a rotation never parks someone who has outplayed the whole field at the back', () => {
+    // Nine players, two subs a rotation: the bench runs dry every rotation, so
+    // whoever is on it comes on regardless of their minutes. Give one of them a
+    // long stint in goal earlier in the game.
+    const nine = ['Dottie', 'Val', 'Kora', 'Dylan', 'Pippa', 'Kit', 'Chanel', 'Harriet', 'Leni'];
+    let s = E.createGame(nine, { subsPerRotation: 2 });
+    s.clock.running = true;
+    s.players.find((p) => p.name === 'Leni').accumulatedMs = 1_200_000;
+    s = E.syncStints(s, 0);
+
+    s = E.syncStints(E.applyRotation(s, 300_000), 300_000);
+    const r = E.roles(s, 300_000);
+    expect(r.field).toContain(idOf(s, 'Leni'));
+    // Most-played on the pitch, so she leads the next-off group rather than
+    // sitting at the back of the queue for the next several rotations.
+    expect(r.nextOff[0]).toBe(idOf(s, 'Leni'));
+    // Harriet, coming on with less time than the field, still appends as usual.
+    expect(r.field[r.field.length - 1]).toBe(idOf(s, 'Harriet'));
+  });
+
   it('putting a bench player in goal benches the old keeper by playing time', () => {
     const after = E.swapKeeperWithField(game, idOf(game, 'Leni'), 60_000);
     const r = E.roles(after);
@@ -370,6 +409,17 @@ describe('time accounting (§4.5)', () => {
     expect(E.playedMs(s, idOf(s, 'Chanel'), 60_000)).toBe(banked);
     // Harriet sat out the first half, so she starts the second and accrues.
     expect(E.playedMs(s, idOf(s, 'Harriet'), 60_000)).toBe(60_000);
+  });
+
+  it('ending a period stops the clock at the whistle and drops a pending rotation', () => {
+    let s = E.proposeRotation(E.syncStints(game, 0), 300_000);
+    expect(s.pendingRotation).not.toBeNull();
+    s = E.endPeriod(s, 1_200_000);
+    expect(s.clock.running).toBe(false);
+    expect(s.clock.periodElapsedMs).toBe(1_200_000);
+    expect(s.pendingRotation).toBeNull();
+    // Stopped means stopped: nothing keeps accruing through the break.
+    expect(E.playedMs(s, idOf(s, 'Val'), 1_500_000)).toBe(1_200_000);
   });
 
   it('banks an unstopped stint when the period rolls over', () => {
