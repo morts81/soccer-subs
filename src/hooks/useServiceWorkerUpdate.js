@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { registerSW } from 'virtual:pwa-register';
 
 /**
@@ -26,8 +26,8 @@ export function useServiceWorkerUpdate() {
     });
   }, []);
 
-  return {
-    needRefresh,
-    applyUpdate: () => updateRef.current?.(true),
-  };
+  // Stable identity so callers can list it as an effect dependency.
+  const applyUpdate = useCallback(() => updateRef.current?.(true), []);
+
+  return { needRefresh, applyUpdate };
 }

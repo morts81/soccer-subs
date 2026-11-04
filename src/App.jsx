@@ -38,15 +38,27 @@ export default function App() {
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [confirmPause, setConfirmPause] = useState(false);
   const [lastActionLabel, setLastActionLabel] = useState(null);
-  const [updateDismissed, setUpdateDismissed] = useState(false);
+  // "Later" hides the banner only for the screen it was tapped on, so it comes
+  // back when the coach moves around rather than staying buried all session.
+  const [updateDismissedOn, setUpdateDismissedOn] = useState(null);
+  const bootedAt = useRef(Date.now());
 
   const { needRefresh, applyUpdate } = useServiceWorkerUpdate();
-  const updateBanner = needRefresh && !updateDismissed ? (
+  const updateScreen = game ? screen : 'setup';
+
+  // A new build found moments after opening the app, with no game on the go,
+  // can't cut anything off — apply it now instead of waiting for a tap nobody
+  // notices. Anything later (or any saved game) still goes through the banner.
+  useEffect(() => {
+    if (needRefresh && !game && Date.now() - bootedAt.current < 15000) applyUpdate();
+  }, [needRefresh, game, applyUpdate]);
+
+  const updateBanner = needRefresh && updateDismissedOn !== updateScreen ? (
     <Toast
       message="A new version is ready — updating reloads the app, so do it between games."
       actions={[
         ['Update', applyUpdate],
-        ['Later', () => setUpdateDismissed(true)],
+        ['Later', () => setUpdateDismissedOn(updateScreen)],
       ]}
     />
   ) : null;

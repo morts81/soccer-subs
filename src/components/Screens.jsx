@@ -12,6 +12,13 @@ const DEFAULT_SQUAD = [
   'Dylan', 'Val', 'Leni', 'Harriet', 'Kora', 'Claudia', 'Amelia', 'Sadie', 'Lucy',
 ];
 
+/** Which build is running — the first thing to check when the app looks stale. */
+function VersionNote() {
+  // eslint-disable-next-line no-undef
+  const version = typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__;
+  return <div className="note">Version {version}</div>;
+}
+
 /** Fisher–Yates, in place — for shuffling a fresh starting lineup. */
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -182,6 +189,7 @@ export function LineupScreen({ savedTeam, onStart, onRestore, onCancel, error })
             scratch.
           </div>
         )}
+        <VersionNote />
       </div>
 
       <div className="footer">
@@ -387,6 +395,7 @@ export function SettingsScreen({ state, onChange, onDone, onPlayers, onLineup, o
         >
           Team lineup — start a new game
         </button>
+        <VersionNote />
       </div>
 
       <div className="footer">
