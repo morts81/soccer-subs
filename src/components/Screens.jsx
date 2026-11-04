@@ -9,7 +9,7 @@ import { isIOS, isStandalone } from '../engine/persistence.js';
 // Seeded so the squad doesn't need retyping every time the app is reset for
 // testing. Also just this team's actual roster.
 const DEFAULT_SQUAD = [
-  'Dylan', 'Kit', 'Pippa', 'Chanel', 'Dottie', 'Val', 'Leni', 'Harriet', 'Kora', 'Claudia', 'Amelia',
+  'Dylan', 'Val', 'Leni', 'Harriet', 'Kora', 'Claudia', 'Amelia', 'Sadie', 'Lucy',
 ];
 
 /** Fisher–Yates, in place — for shuffling a fresh starting lineup. */
