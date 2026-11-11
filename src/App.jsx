@@ -231,7 +231,14 @@ export default function App() {
         ? game.order.indexOf(roles.bench[0])
         : from;
       commit(E.reorder(game, from, to, nowMs), nowMs);
-      setLastActionLabel(`${name} moved in the queue`);
+      setLastActionLabel(`${name} moved to the front`);
+      flash(onField ? `${name} will sub off next` : `${name} will come on next`);
+    } else if (action === 'moveToBack') {
+      const name = E.getPlayer(game, id).name;
+      const onField = ['field', 'nextOff'].includes(E.roleOf(game, id, nowMs));
+      commit(E.moveToBack(game, id, nowMs), nowMs);
+      setLastActionLabel(`${name} moved to the back`);
+      flash(onField ? `${name} will be the last to sub off` : `${name} will be the last to come on`);
     } else if (action === 'unavailable') {
       setSheet({ kind: 'reason', id });
     }

@@ -90,10 +90,13 @@ export function PlayerSheet({ state, id, nowMs, onClose, onAction }) {
     if (role !== 'keeper' && state.settings.keeperEnabled) {
       items.push(['keeper', onField ? 'Put in goal' : 'Bring on in goal']);
     }
-    items.push([
-      'moveTo',
-      onField ? 'Move to the front of the queue' : 'Move to the front of the bench',
-    ]);
+    // Outcome-first wording: "front of the queue" meant opposite things on the
+    // field (off soonest) and the bench (on soonest). The keeper is in neither
+    // queue — changing keeper goes through "Who goes in goal?".
+    if (role !== 'keeper') {
+      items.push(['moveTo', onField ? 'Sub off next' : 'Bring on next']);
+      items.push(['moveToBack', onField ? 'Sub off last' : 'Bring on last']);
+    }
     items.push(['unavailable', 'Take out for the rest of the game']);
   }
 

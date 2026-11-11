@@ -610,6 +610,33 @@ export function reorder(state, fromIndex, toIndex, nowMs) {
   return syncStints(next, now_(next, nowMs));
 }
 
+/**
+ * Send a player to the back of their own queue: last off if on the field,
+ * last on if on the bench. The mirror of "Move to the front".
+ *
+ * The case it exists for is a player who has to leave early: put them at the
+ * back of the field and they ride out every rotation before theirs, then come
+ * off for good. Unlike "Keep on" it isn't a standing hold — the queue carries
+ * them forward again as rotations land, so nothing needs releasing later.
+ * The keeper isn't in either queue, so they're left where they are.
+ */
+export function moveToBack(state, id, nowMs) {
+  const t = now_(state, nowMs);
+  const r = roles(state, t);
+  const queue = r.field.includes(id) ? r.field : r.bench.includes(id) ? r.bench : null;
+  if (!queue || queue[queue.length - 1] === id) return state;
+
+  const next = clone(state);
+  pushUndo(next);
+  rebuild(next, {
+    keeperId: r.keeperId,
+    field: queue === r.field ? [...r.field.filter((x) => x !== id), id] : r.field,
+    bench: queue === r.bench ? [...r.bench.filter((x) => x !== id), id] : r.bench,
+  });
+  logEvent(next, { type: 'REORDER', note: id });
+  return syncStints(next, t);
+}
+
 /** §4.6 — re-sort by time played, discarding manual order. */
 export function rebalance(state, nowMs) {
   const next = clone(state);

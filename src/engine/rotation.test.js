@@ -695,3 +695,35 @@ describe('goal scoring', () => {
     expect(reverted.score[0]).toBe(0);
   });
 });
+
+describe('move to the back (leaving early)', () => {
+  it('puts a field player last off, and they ride out the rotations ahead of them', () => {
+    const val = idOf(game, 'Val');
+    let s = E.moveToBack(game, val, 0);
+    let r = E.roles(s);
+    expect(names(s, r.field)).toEqual(['Kora', 'Dylan', 'Pippa', 'Kit', 'Chanel', 'Val']);
+    expect(names(s, r.nextOff)).toEqual(['Kora', 'Dylan', 'Pippa']);
+
+    // Rotation 1 takes the group ahead of her; she's in the next one.
+    s = E.applyRotation(s, 300_000);
+    r = E.roles(s);
+    expect(r.field).toContain(val);
+    expect(names(s, r.nextOff)).toEqual(['Kit', 'Chanel', 'Val']);
+  });
+
+  it('puts a bench player last on', () => {
+    const harriet = idOf(game, 'Harriet');
+    const s = E.moveToBack(game, harriet, 0);
+    const r = E.roles(s);
+    expect(names(s, r.bench)).toEqual(['Leni', 'Claudia', 'Amelia', 'Harriet']);
+    expect(r.nextIn).not.toContain(harriet);
+  });
+
+  it('leaves the keeper and an already-last player alone, and is undoable', () => {
+    expect(E.moveToBack(game, idOf(game, 'Dottie'), 0)).toBe(game);
+    expect(E.moveToBack(game, idOf(game, 'Chanel'), 0)).toBe(game);
+
+    const moved = E.moveToBack(game, idOf(game, 'Val'), 0);
+    expect(E.undo(moved, 0).order).toEqual(game.order);
+  });
+});
